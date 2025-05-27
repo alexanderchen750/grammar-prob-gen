@@ -1,0 +1,3 @@
+[submodule "grammar-gen"]
+	path = grammar-gen
+	url = https://github.com/alexanderchen750/grammar-gen.git
