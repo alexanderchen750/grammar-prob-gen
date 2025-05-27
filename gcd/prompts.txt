@@ -1,0 +1,20 @@
+ { "name": "Solar Charger X200", "type": "device", "wattage": 15, "portable": true }
+ { "title": "The Forgotten Forest", "author": "E. Wren", "genre": "fantasy", "pages": 348 }
+ { "species": "Axolotl", "habitat": "freshwater", "endangered": true }
+ { "username": "catlover92", "followers": 1820, "verified": false }
+ { "name": "GammaBot-3", "type": "robot", "tasks": ["cleaning", "surveillance"], "battery_life": "8h" }
+ { "event": "Meteor Shower", "date": "2025-08-12", "location": "Northern Hemisphere", "visibility": "high" }
+ { "product": "Artisan Coffee Blend", "weight_grams": 250, "origin": "Ethiopia", "organic": true }
+ { "city": "Neo Tokyo", "population": 13500000, "elevation_m": 40 }
+ { "id": "A312XZ", "category": "sensor", "temperature_range": "-40 to 85C" }
+ { "planet": "Kepler-186f", "distance_ly": 492, "habitable": true }
+ { "animal": "Peregrine Falcon", "speed_kmh": 390, "diet": "carnivore" }
+ { "conference": "PyData Global 2025", "location": "virtual", "attendees": 5200 }
+ { "title": "Midnight Code", "developer": "Nightsoft Studios", "platforms": ["PC", "Switch"], "rating": 4.6 }
+ { "beverage": "Matcha Latte", "size_ml": 350, "caffeine_mg": 70 }
+ { "tool": "MultiSocket Wrench", "material": "steel", "price_usd": 19.99 }
+ { "character": "Zarnak the Wise", "class": "mage", "mana": 120, "alignment": "neutral good" }
+ { "weather": "Thunderstorm", "humidity": 88, "wind_kph": 35, "alerts": ["flood", "lightning"] }
+ { "track": "Echoes of the Deep", "artist": "Luna Waves", "duration_sec": 214 }
+ { "vehicle": "Eon Cruiser", "range_km": 540, "autonomous": true }
+ { "document": "Project Brief", "version": "1.4.2", "confidential": false, "pages": 12 }
