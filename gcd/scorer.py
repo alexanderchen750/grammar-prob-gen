@@ -32,17 +32,17 @@ class TokenProbabilityScorer:
             logits_i = logits_seq[0, i] if i >= 0 else logits_seq[0, 0]  # Use first logits for i == -1 # (vocab,)
             proc_logits = processor.process(prev_ids, logits_i.unsqueeze(0))[0]
 
-            probs = F.softmax(proc_logits, dim=-1)
+            log_probs = F.log_softmax(proc_logits, dim=-1)
             target_id = ids[0, i + 1].item()
 
-            topk = torch.topk(probs, k=self.k)
+            topk = torch.topk(log_probs, k=self.k)
 
             results.append(
                 StepResult(
                     step=i + 1,
                     prev_token=self.tok.decode([ids[0, i]]) if i >= 0 else "<BOS>",
                     target_token=self.tok.decode([target_id]),
-                    target_prob=probs[target_id].item(),
+                    target_prob=log_probs[target_id].item(),
                     top_tokens=[self.tok.decode([t.item()]) for t in topk.indices],
                     top_probs=topk.values.tolist(),
                 )
