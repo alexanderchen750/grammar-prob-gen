@@ -1,0 +1,10 @@
+start: value
+value: object | array | string | NUMBER | "true" | "false" | "null"
+object: "{" [pair ("," pair)*] "}"
+pair: string ":" value
+array: "[" [value ("," value)*] "]"
+string: ESCAPED_STRING
+NUMBER: /-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?/
+%import common.ESCAPED_STRING
+%import common.WS
+%ignore WS
