@@ -1,0 +1,767 @@
+// ─── start ─────────────────────────────────────────────────────────────
+start               : select_stmt SEMI?                          -> start
+
+// ─── SELECT / UNION ──────────────────────────────────────────────────
+select_stmt         : select_core (UNION select_core)*           -> union
+select_core         : SELECT distinct? sel_list FROM from_clause join_clause? where_clause? order_clause? group_clause? having_clause?                            -> select
+
+distinct            : DISTINCT
+sel_list            : STAR                                       -> sel_all
+                    | expr_item (COMMA expr_item)*               -> sel_items
+expr_item           : expr (AS collabel)?                        -> expr_item
+
+// ─── FROM / JOIN ─────────────────────────────────────────────────────
+from_clause         : table_factor (COMMA table_factor)*         -> from_list
+table_factor        : table_ref
+                    | OPEN_PAREN select_stmt CLOSE_PAREN AS table_ref
+
+join_clause         : (JOIN join_target ON expr)+                -> joined
+join_target         : table_ref
+                    | OPEN_PAREN select_stmt CLOSE_PAREN AS table_ref
+
+// ─── optional clauses ────────────────────────────────────────────────
+where_clause        : WHERE expr                                 -> where
+group_clause        : GROUP_P BY colref_list                     -> groupby
+having_clause       : HAVING expr                                -> having
+order_clause        : ORDER BY order_item (COMMA order_item)*    -> orderby
+
+order_item          : columnref
+                    | IDENTIFIER USING (GT|LT)                   -> order_using
+                    | IDENTIFIER (ASC|DESC)                      -> order_dir
+
+// ─── column & table names ────────────────────────────────────────────
+columnref           : IDENTIFIER                                 -> col_simple
+                    | IDENTIFIER AS collabel                     -> col_alias
+                    | table_ref DOT IDENTIFIER                   -> col_qual
+                    | table_ref DOT IDENTIFIER AS collabel       -> col_qual_alias
+
+table_ref           : IDENTIFIER (AS IDENTIFIER)?                -> tbl_name
+
+collabel            : IDENTIFIER
+colref_list         : columnref (COMMA columnref)*               -> colref_list
+
+// ─── expression grammar (built-in precedence) ────────────────────────
+?expr               : or_expr
+
+?or_expr            : and_expr (OR and_expr)*                    -> or_chain
+?and_expr           : cmp_expr (AND cmp_expr)*                   -> and_chain
+
+?cmp_expr           : add_expr (cmp_op add_expr)*                -> cmp_chain
+cmp_op              : EQUAL | GT | LT | GREATER_EQUALS
+                    | LESS_EQUALS | NOT_EQUALS
+
+?add_expr           : mul_expr ((PLUS|MINUS) mul_expr)*          -> add_chain
+?mul_expr           : unary_expr ((STAR|SLASH) unary_expr)*      -> mul_chain
+
+?unary_expr         : (NOT|EXISTS|PLUS|MINUS) unary_expr         -> unary
+                    | primary                                    -> primary
+
+?primary            : columnref                                  -> prim_col
+                    | function_call                              -> prim_call
+                    | INTEGRAL                                   -> prim_int
+                    | NUMERIC                                    -> prim_num
+                    | STRING_CONSTANT                            -> prim_str
+                    | DISTINCT expr                              -> prim_distinct
+                    | OPEN_PAREN expr CLOSE_PAREN                -> prim_paren
+                    | OPEN_PAREN select_stmt CLOSE_PAREN         -> prim_subquery
+                    | str_array                                  -> prim_str_array
+                    | int_array                                  -> prim_int_array
+
+// ─── function calls & CASE expression ────────────────────────────────
+function_call       : IDENTIFIER OPEN_PAREN arg_list? CLOSE_PAREN      -> fn_plain
+                    | EXTRACT OPEN_PAREN YEAR_P FROM expr CLOSE_PAREN  -> fn_extract
+                    | SUBSTRING OPEN_PAREN expr FROM INTEGRAL FOR INTEGRAL CLOSE_PAREN -> fn_substr
+                    | ROUND OPEN_PAREN expr SLASH expr COMMA INTEGRAL CLOSE_PAREN      -> fn_round
+                    | IDENTIFIER OPEN_PAREN case_expr CLOSE_PAREN      -> fn_casewrap
+                    | OPEN_PAREN case_expr CLOSE_PAREN                 -> fn_case
+
+arg_list            : expr (COMMA expr)*
+case_expr           : CASE WHEN expr THEN expr ELSE int_or_null END_P  -> case
+int_or_null         : INTEGRAL | NULL_P
+
+// ─── array-style literals (must have at least one comma) ─────────────
+str_array           : OPEN_PAREN STRING_CONSTANT COMMA STRING_CONSTANT (COMMA STRING_CONSTANT)* CLOSE_PAREN
+int_array           : OPEN_PAREN INTEGRAL COMMA INTEGRAL (COMMA INTEGRAL)* CLOSE_PAREN
+
+
+// SQL Lexer in Lark EBNF format
+
+// Identifiers
+IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_]*/
+QUOTED_IDENTIFIER: /"(""|[^"])*"/
+UNICODE_QUOTED_IDENTIFIER: /U&"(""|[^"])*"/
+
+// Special Characters
+DOLLAR: "$"
+OPEN_PAREN: "("
+CLOSE_PAREN: ")"
+OPEN_BRACKET: "["
+CLOSE_BRACKET: "]"
+COMMA: ","
+SEMI: ";"
+COLON: ":"
+STAR: "*"
+EQUAL: "="
+DOT: "."
+PLUS: "+"
+MINUS: "-"
+SLASH: "/"
+CARET: "^"
+LT: "<"
+GT: ">"
+LESS_LESS: "<<"
+GREATER_GREATER: ">>"
+COLON_EQUALS: ":="
+LESS_EQUALS: "<="
+EQUALS_GREATER: "=>"
+GREATER_EQUALS: ">="
+DOT_DOT: ".."
+NOT_EQUALS: "<>"
+TYPECAST: "::"
+PERCENT: "%"
+PARAM: "$" /[0-9]+/
+
+// Operators
+OPERATOR: /([*<>=~!@%^&|`?#]+|[+\-]+([*<>=~!@%^&|`?#\/]|[+\-])*)/
+
+// Keywords
+ALL: "ALL"i
+ANALYSE: "ANALYSE"i
+ANALYZE: "ANALYZE"i
+AND: "AND"i
+ANY: "ANY"i
+ARRAY: "ARRAY"i
+AS: "AS"i
+ASC: "ASC"i
+ASYMMETRIC: "ASYMMETRIC"i
+BOTH: "BOTH"i
+CASE: "CASE"i
+CAST: "CAST"i
+CHECK: "CHECK"i
+COLLATE: "COLLATE"i
+COLUMN: "COLUMN"i
+CONSTRAINT: "CONSTRAINT"i
+CREATE: "CREATE"i
+CURRENT_CATALOG: "CURRENT_CATALOG"i
+CURRENT_DATE: "CURRENT_DATE"i
+CURRENT_ROLE: "CURRENT_ROLE"i
+CURRENT_TIME: "CURRENT_TIME"i
+CURRENT_TIMESTAMP: "CURRENT_TIMESTAMP"i
+CURRENT_USER: "CURRENT_USER"i
+DEFAULT: "DEFAULT"i
+DEFERRABLE: "DEFERRABLE"i
+DESC: "DESC"i
+DISTINCT: "DISTINCT"i
+DO: "DO"i
+ELSE: "ELSE"i
+EXCEPT: "EXCEPT"i
+FALSE_P: "FALSE"i
+FETCH: "FETCH"i
+FOR: "FOR"i
+FOREIGN: "FOREIGN"i
+FROM: "FROM"i
+GRANT: "GRANT"i
+GROUP_P: "GROUP"i
+HAVING: "HAVING"i
+IN_P: "IN"i
+INITIALLY: "INITIALLY"i
+INTERSECT: "INTERSECT"i
+INTO: "INTO"i
+LATERAL_P: "LATERAL"i
+LEADING: "LEADING"i
+LIMIT: "LIMIT"i
+LOCALTIME: "LOCALTIME"i
+LOCALTIMESTAMP: "LOCALTIMESTAMP"i
+NOT: "NOT"i
+NULL_P: "NULL"i
+OFFSET: "OFFSET"i
+ON: "ON"i
+ONLY: "ONLY"i
+OR: "OR"i
+ORDER: "ORDER"i
+PLACING: "PLACING"i
+PRIMARY: "PRIMARY"i
+REFERENCES: "REFERENCES"i
+RETURNING: "RETURNING"i
+SELECT: "SELECT"i
+SESSION_USER: "SESSION_USER"i
+SOME: "SOME"i
+SYMMETRIC: "SYMMETRIC"i
+TABLE: "TABLE"i
+THEN: "THEN"i
+TO: "TO"i
+TRAILING: "TRAILING"i
+TRUE_P: "TRUE"i
+UNION: "UNION"i
+UNIQUE: "UNIQUE"i
+USER: "USER"i
+USING: "USING"i
+VARIADIC: "VARIADIC"i
+WHEN: "WHEN"i
+WHERE: "WHERE"i
+WINDOW: "WINDOW"i
+WITH: "WITH"i
+
+// Reserved keywords (can be function or type)
+AUTHORIZATION: "AUTHORIZATION"i
+BINARY: "BINARY"i
+COLLATION: "COLLATION"i
+CONCURRENTLY: "CONCURRENTLY"i
+CROSS: "CROSS"i
+CURRENT_SCHEMA: "CURRENT_SCHEMA"i
+FREEZE: "FREEZE"i
+FULL: "FULL"i
+ILIKE: "ILIKE"i
+INNER_P: "INNER"i
+IS: "IS"i
+ISNULL: "ISNULL"i
+JOIN: "JOIN"i
+LEFT: "LEFT"i
+LIKE: "LIKE"i
+NATURAL: "NATURAL"i
+NOTNULL: "NOTNULL"i
+OUTER_P: "OUTER"i
+OVER: "OVER"i
+OVERLAPS: "OVERLAPS"i
+RIGHT: "RIGHT"i
+SIMILAR: "SIMILAR"i
+VERBOSE: "VERBOSE"i
+
+// Non-reserved keywords
+ABORT_P: "ABORT"i
+ABSOLUTE_P: "ABSOLUTE"i
+ACCESS: "ACCESS"i
+ACTION: "ACTION"i
+ADD_P: "ADD"i
+ADMIN: "ADMIN"i
+AFTER: "AFTER"i
+AGGREGATE: "AGGREGATE"i
+ALSO: "ALSO"i
+ALTER: "ALTER"i
+ALWAYS: "ALWAYS"i
+ASSERTION: "ASSERTION"i
+ASSIGNMENT: "ASSIGNMENT"i
+AT: "AT"i
+ATTRIBUTE: "ATTRIBUTE"i
+BACKWARD: "BACKWARD"i
+BEFORE: "BEFORE"i
+BEGIN_P: "BEGIN"i
+BY: "BY"i
+CACHE: "CACHE"i
+CALLED: "CALLED"i
+CASCADE: "CASCADE"i
+CASCADED: "CASCADED"i
+CATALOG: "CATALOG"i
+CHAIN: "CHAIN"i
+CHARACTERISTICS: "CHARACTERISTICS"i
+CHECKPOINT: "CHECKPOINT"i
+CLASS: "CLASS"i
+CLOSE: "CLOSE"i
+CLUSTER: "CLUSTER"i
+COMMENT: "COMMENT"i
+COMMENTS: "COMMENTS"i
+COMMIT: "COMMIT"i
+COMMITTED: "COMMITTED"i
+CONFIGURATION: "CONFIGURATION"i
+CONNECTION: "CONNECTION"i
+CONSTRAINTS: "CONSTRAINTS"i
+CONTENT_P: "CONTENT"i
+CONTINUE_P: "CONTINUE"i
+CONVERSION_P: "CONVERSION"i
+COPY: "COPY"i
+COST: "COST"i
+CSV: "CSV"i
+CURSOR: "CURSOR"i
+CYCLE: "CYCLE"i
+DATA_P: "DATA"i
+DATABASE: "DATABASE"i
+DAY_P: "DAY"i
+DEALLOCATE: "DEALLOCATE"i
+DECLARE: "DECLARE"i
+DEFAULTS: "DEFAULTS"i
+DEFERRED: "DEFERRED"i
+DEFINER: "DEFINER"i
+DELETE_P: "DELETE"i
+DELIMITER: "DELIMITER"i
+DELIMITERS: "DELIMITERS"i
+DICTIONARY: "DICTIONARY"i
+DISABLE_P: "DISABLE"i
+DISCARD: "DISCARD"i
+DOCUMENT_P: "DOCUMENT"i
+DOMAIN_P: "DOMAIN"i
+DOUBLE_P: "DOUBLE"i
+DROP: "DROP"i
+EACH: "EACH"i
+ENABLE_P: "ENABLE"i
+ENCODING: "ENCODING"i
+ENCRYPTED: "ENCRYPTED"i
+ENUM_P: "ENUM"i
+ESCAPE: "ESCAPE"i
+EVENT: "EVENT"i
+EXCLUDE: "EXCLUDE"i
+EXCLUDING: "EXCLUDING"i
+EXCLUSIVE: "EXCLUSIVE"i
+EXECUTE: "EXECUTE"i
+EXPLAIN: "EXPLAIN"i
+EXTENSION: "EXTENSION"i
+EXTERNAL: "EXTERNAL"i
+FAMILY: "FAMILY"i
+FIRST_P: "FIRST"i
+FOLLOWING: "FOLLOWING"i
+FORCE: "FORCE"i
+FORWARD: "FORWARD"i
+FUNCTION: "FUNCTION"i
+FUNCTIONS: "FUNCTIONS"i
+GLOBAL: "GLOBAL"i
+GRANTED: "GRANTED"i
+HANDLER: "HANDLER"i
+HEADER_P: "HEADER"i
+HOLD: "HOLD"i
+HOUR_P: "HOUR"i
+IDENTITY_P: "IDENTITY"i
+IF_P: "IF"i
+IMMEDIATE: "IMMEDIATE"i
+IMMUTABLE: "IMMUTABLE"i
+IMPLICIT_P: "IMPLICIT"i
+INCLUDING: "INCLUDING"i
+INCREMENT: "INCREMENT"i
+INDEX: "INDEX"i
+INDEXES: "INDEXES"i
+INHERIT: "INHERIT"i
+INHERITS: "INHERITS"i
+INLINE_P: "INLINE"i
+INSENSITIVE: "INSENSITIVE"i
+INSERT: "INSERT"i
+INSTEAD: "INSTEAD"i
+INVOKER: "INVOKER"i
+ISOLATION: "ISOLATION"i
+KEY: "KEY"i
+LABEL: "LABEL"i
+LANGUAGE: "LANGUAGE"i
+LARGE_P: "LARGE"i
+LAST_P: "LAST"i
+LEAKPROOF: "LEAKPROOF"i
+LEVEL: "LEVEL"i
+LISTEN: "LISTEN"i
+LOAD: "LOAD"i
+LOCAL: "LOCAL"i
+LOCATION: "LOCATION"i
+LOCK_P: "LOCK"i
+MAPPING: "MAPPING"i
+MATCH: "MATCH"i
+MATCHED: "MATCHED"i
+MATERIALIZED: "MATERIALIZED"i
+MAXVALUE: "MAXVALUE"i
+MERGE: "MERGE"i
+MINUTE_P: "MINUTE"i
+MINVALUE: "MINVALUE"i
+MODE: "MODE"i
+MONTH_P: "MONTH"i
+MOVE: "MOVE"i
+NEXT: "NEXT"i
+NO: "NO"i
+NOTHING: "NOTHING"i
+NOTIFY: "NOTIFY"i
+NOWAIT: "NOWAIT"i
+NULLS_P: "NULLS"i
+OBJECT_P: "OBJECT"i
+OF: "OF"i
+OFF: "OFF"i
+OIDS: "OIDS"i
+OPERATOR_KW: "OPERATOR"i
+OPTION: "OPTION"i
+OPTIONS: "OPTIONS"i
+OWNED: "OWNED"i
+OWNER: "OWNER"i
+PARSER: "PARSER"i
+PARTIAL: "PARTIAL"i
+PARTITION: "PARTITION"i
+PASSING: "PASSING"i
+PASSWORD: "PASSWORD"i
+PLANS: "PLANS"i
+PRECEDING: "PRECEDING"i
+PREPARE: "PREPARE"i
+PREPARED: "PREPARED"i
+PRESERVE: "PRESERVE"i
+PRIOR: "PRIOR"i
+PRIVILEGES: "PRIVILEGES"i
+PROCEDURAL: "PROCEDURAL"i
+PROCEDURE: "PROCEDURE"i
+PROGRAM: "PROGRAM"i
+QUOTE: "QUOTE"i
+RANGE: "RANGE"i
+READ: "READ"i
+REASSIGN: "REASSIGN"i
+RECHECK: "RECHECK"i
+RECURSIVE: "RECURSIVE"i
+REF: "REF"i
+REFRESH: "REFRESH"i
+REINDEX: "REINDEX"i
+RELATIVE_P: "RELATIVE"i
+RELEASE: "RELEASE"i
+RENAME: "RENAME"i
+REPEATABLE: "REPEATABLE"i
+REPLACE: "REPLACE"i
+REPLICA: "REPLICA"i
+RESET: "RESET"i
+RESTART: "RESTART"i
+RESTRICT: "RESTRICT"i
+RETURNS: "RETURNS"i
+REVOKE: "REVOKE"i
+ROLE: "ROLE"i
+ROLLBACK: "ROLLBACK"i
+ROWS: "ROWS"i
+RULE: "RULE"i
+SAVEPOINT: "SAVEPOINT"i
+SCHEMA: "SCHEMA"i
+SCROLL: "SCROLL"i
+SEARCH: "SEARCH"i
+SECOND_P: "SECOND"i
+SECURITY: "SECURITY"i
+SEQUENCE: "SEQUENCE"i
+SEQUENCES: "SEQUENCES"i
+SERIALIZABLE: "SERIALIZABLE"i
+SERVER: "SERVER"i
+SESSION: "SESSION"i
+SET: "SET"i
+SHARE: "SHARE"i
+SHOW: "SHOW"i
+SIMPLE: "SIMPLE"i
+SNAPSHOT: "SNAPSHOT"i
+STABLE: "STABLE"i
+STANDALONE_P: "STANDALONE"i
+START: "START"i
+STATEMENT: "STATEMENT"i
+STATISTICS: "STATISTICS"i
+STDIN: "STDIN"i
+STDOUT: "STDOUT"i
+STORAGE: "STORAGE"i
+STRICT_P: "STRICT"i
+STRIP_P: "STRIP"i
+SYSID: "SYSID"i
+SYSTEM_P: "SYSTEM"i
+TABLES: "TABLES"i
+TABLESPACE: "TABLESPACE"i
+TEMP: "TEMP"i
+TEMPLATE: "TEMPLATE"i
+TEMPORARY: "TEMPORARY"i
+TEXT_P: "TEXT"i
+TRANSACTION: "TRANSACTION"i
+TRIGGER: "TRIGGER"i
+TRUNCATE: "TRUNCATE"i
+TRUSTED: "TRUSTED"i
+TYPE_P: "TYPE"i
+TYPES_P: "TYPES"i
+UNBOUNDED: "UNBOUNDED"i
+UNCOMMITTED: "UNCOMMITTED"i
+UNENCRYPTED: "UNENCRYPTED"i
+UNKNOWN: "UNKNOWN"i
+UNLISTEN: "UNLISTEN"i
+UNLOGGED: "UNLOGGED"i
+UNTIL: "UNTIL"i
+UPDATE: "UPDATE"i
+VACUUM: "VACUUM"i
+VALID: "VALID"i
+VALIDATE: "VALIDATE"i
+VALIDATOR: "VALIDATOR"i
+VARYING: "VARYING"i
+VERSION_P: "VERSION"i
+VIEW: "VIEW"i
+VOLATILE: "VOLATILE"i
+WHITESPACE_P: "WHITESPACE"i
+WITHOUT: "WITHOUT"i
+WORK: "WORK"i
+WRAPPER: "WRAPPER"i
+WRITE: "WRITE"i
+XML_P: "XML"i
+YEAR_P: "YEAR"i
+YES_P: "YES"i
+ZONE: "ZONE"i
+
+// Non-reserved keywords (can not be function or type)
+BETWEEN: "BETWEEN"i
+BIGINT: "BIGINT"i
+BIT: "BIT"i
+BOOLEAN_P: "BOOLEAN"i
+CHAR_P: "CHAR"i
+CHARACTER: "CHARACTER"i
+COALESCE: "COALESCE"i
+DEC: "DEC"i
+DECIMAL_P: "DECIMAL"i
+EXISTS: "EXISTS"i
+EXTRACT: "EXTRACT"i
+FLOAT_P: "FLOAT"i
+GREATEST: "GREATEST"i
+INOUT: "INOUT"i
+INT_P: "INT"i
+INTEGER: "INTEGER"i
+INTERVAL: "INTERVAL"i
+LEAST: "LEAST"i
+NATIONAL: "NATIONAL"i
+NCHAR: "NCHAR"i
+NONE: "NONE"i
+NULLIF: "NULLIF"i
+NUMERIC_KW: "NUMERIC"i
+OVERLAY: "OVERLAY"i
+POSITION: "POSITION"i
+PRECISION: "PRECISION"i
+REAL: "REAL"i
+ROW: "ROW"i
+SETOF: "SETOF"i
+SMALLINT: "SMALLINT"i
+SUBSTRING: "SUBSTRING"i
+TIME: "TIME"i
+TIMESTAMP: "TIMESTAMP"i
+TREAT: "TREAT"i
+TRIM: "TRIM"i
+VALUES: "VALUES"i
+VARCHAR: "VARCHAR"i
+XMLATTRIBUTES: "XMLATTRIBUTES"i
+XMLCOMMENT: "XMLCOMMENT"i
+XMLAGG: "XMLAGG"i
+XML_IS_WELL_FORMED: "XML_IS_WELL_FORMED"i
+XML_IS_WELL_FORMED_DOCUMENT: "XML_IS_WELL_FORMED_DOCUMENT"i
+XML_IS_WELL_FORMED_CONTENT: "XML_IS_WELL_FORMED_CONTENT"i
+XPATH: "XPATH"i
+XPATH_EXISTS: "XPATH_EXISTS"i
+XMLCONCAT: "XMLCONCAT"i
+XMLELEMENT: "XMLELEMENT"i
+XMLEXISTS: "XMLEXISTS"i
+XMLFOREST: "XMLFOREST"i
+XMLPARSE: "XMLPARSE"i
+XMLPI: "XMLPI"i
+XMLROOT: "XMLROOT"i
+XMLSERIALIZE: "XMLSERIALIZE"i
+
+// Additional keywords
+CALL: "CALL"i
+CURRENT_P: "CURRENT"i
+ATTACH: "ATTACH"i
+DETACH: "DETACH"i
+EXPRESSION: "EXPRESSION"i
+GENERATED: "GENERATED"i
+LOGGED: "LOGGED"i
+STORED: "STORED"i
+INCLUDE: "INCLUDE"i
+ROUTINE: "ROUTINE"i
+TRANSFORM: "TRANSFORM"i
+IMPORT_P: "IMPORT"i
+POLICY: "POLICY"i
+METHOD: "METHOD"i
+REFERENCING: "REFERENCING"i
+NEW: "NEW"i
+OLD: "OLD"i
+VALUE_P: "VALUE"i
+SUBSCRIPTION: "SUBSCRIPTION"i
+PUBLICATION: "PUBLICATION"i
+OUT_P: "OUT"i
+END_P: "END"i
+ROUTINES: "ROUTINES"i
+SCHEMAS: "SCHEMAS"i
+PROCEDURES: "PROCEDURES"i
+INPUT_P: "INPUT"i
+SUPPORT: "SUPPORT"i
+PARALLEL: "PARALLEL"i
+SQL_P: "SQL"i
+DEPENDS: "DEPENDS"i
+OVERRIDING: "OVERRIDING"i
+CONFLICT: "CONFLICT"i
+SKIP_P: "SKIP"i
+LOCKED: "LOCKED"i
+TIES: "TIES"i
+ROLLUP: "ROLLUP"i
+CUBE: "CUBE"i
+GROUPING: "GROUPING"i
+SETS: "SETS"i
+TABLESAMPLE: "TABLESAMPLE"i
+ORDINALITY: "ORDINALITY"i
+XMLTABLE: "XMLTABLE"i
+COLUMNS: "COLUMNS"i
+XMLNAMESPACES: "XMLNAMESPACES"i
+ROWTYPE: "ROWTYPE"i
+NORMALIZED: "NORMALIZED"i
+WITHIN: "WITHIN"i
+FILTER: "FILTER"i
+GROUPS: "GROUPS"i
+OTHERS: "OTHERS"i
+NFC: "NFC"i
+NFD: "NFD"i
+NFKC: "NFKC"i
+NFKD: "NFKD"i
+UESCAPE: "UESCAPE"i
+VIEWS: "VIEWS"i
+NORMALIZE: "NORMALIZE"i
+DUMP: "DUMP"i
+PRINT_STRICT_PARAMS: "PRINT_STRICT_PARAMS"i
+VARIABLE_CONFLICT: "VARIABLE_CONFLICT"i
+ERROR: "ERROR"i
+USE_VARIABLE: "USE_VARIABLE"i
+USE_COLUMN: "USE_COLUMN"i
+ALIAS: "ALIAS"i
+CONSTANT: "CONSTANT"i
+PERFORM: "PERFORM"i
+GET: "GET"i
+DIAGNOSTICS: "DIAGNOSTICS"i
+STACKED: "STACKED"i
+ELSIF: "ELSIF"i
+WHILE: "WHILE"i
+REVERSE: "REVERSE"i
+FOREACH: "FOREACH"i
+SLICE: "SLICE"i
+EXIT: "EXIT"i
+RETURN: "RETURN"i
+QUERY: "QUERY"i
+RAISE: "RAISE"i
+SQLSTATE: "SQLSTATE"i
+DEBUG: "DEBUG"i
+LOG: "LOG"i
+INFO: "INFO"i
+NOTICE: "NOTICE"i
+WARNING: "WARNING"i
+EXCEPTION: "EXCEPTION"i
+ASSERT: "ASSERT"i
+LOOP: "LOOP"i
+OPEN: "OPEN"i
+
+// Identifiers
+ABS: "ABS"i
+CBRT: "CBRT"i
+CEIL: "CEIL"i
+CEILING: "CEILING"i
+DEGREES: "DEGREES"i
+DIV: "DIV"i
+EXP: "EXP"i
+FACTORIAL: "FACTORIAL"i
+FLOOR: "FLOOR"i
+GCD: "GCD"i
+LCM: "LCM"i
+LN: "LN"i
+LOG10: "LOG10"i
+MIN_SCALE: "MIN_SCALE"i
+MOD: "MOD"i
+PI: "PI"i
+POWER: "POWER"i
+RADIANS: "RADIANS"i
+ROUND: "ROUND"i
+SCALE: "SCALE"i
+SIGN: "SIGN"i
+SQRT: "SQRT"i
+TRIM_SCALE: "TRIM_SCALE"i
+TRUNC: "TRUNC"i
+WIDTH_BUCKET: "WIDTH_BUCKET"i
+RANDOM: "RANDOM"i
+SETSEED: "SETSEED"i
+ACOS: "ACOS"i
+ACOSD: "ACOSD"i
+ASIN: "ASIN"i
+ASIND: "ASIND"i
+ATAN: "ATAN"i
+ATAND: "ATAND"i
+ATAN2: "ATAN2"i
+ATAN2D: "ATAN2D"i
+COS: "COS"i
+COSD: "COSD"i
+COT: "COT"i
+COTD: "COTD"i
+SIN: "SIN"i
+SIND: "SIND"i
+TAN: "TAN"i
+TAND: "TAND"i
+SINH: "SINH"i
+COSH: "COSH"i
+TANH: "TANH"i
+ASINH: "ASINH"i
+ACOSH: "ACOSH"i
+ATANH: "ATANH"i
+BIT_LENGTH: "BIT_LENGTH"i
+CHAR_LENGTH: "CHAR_LENGTH"i
+CHARACTER_LENGTH: "CHARACTER_LENGTH"i
+LOWER: "LOWER"i
+OCTET_LENGTH: "OCTET_LENGTH"i
+UPPER: "UPPER"i
+ASCII: "ASCII"i
+BTRIM: "BTRIM"i
+CHR: "CHR"i
+CONCAT: "CONCAT"i
+CONCAT_WS: "CONCAT_WS"i
+FORMAT: "FORMAT"i
+INITCAP: "INITCAP"i
+LENGTH: "LENGTH"i
+LPAD: "LPAD"i
+LTRIM: "LTRIM"i
+MD5: "MD5"i
+PARSE_IDENT: "PARSE_IDENT"i
+PG_CLIENT_ENCODING: "PG_CLIENT_ENCODING"i
+QUOTE_IDENT: "QUOTE_IDENT"i
+QUOTE_LITERAL: "QUOTE_LITERAL"i
+QUOTE_NULLABLE: "QUOTE_NULLABLE"i
+REGEXP_COUNT: "REGEXP_COUNT"i
+REGEXP_INSTR: "REGEXP_INSTR"i
+REGEXP_LIKE: "REGEXP_LIKE"i
+REGEXP_MATCH: "REGEXP_MATCH"i
+REGEXP_MATCHES: "REGEXP_MATCHES"i
+REGEXP_REPLACE: "REGEXP_REPLACE"i
+REGEXP_SPLIT_TO_ARRAY: "REGEXP_SPLIT_TO_ARRAY"i
+REGEXP_SPLIT_TO_TABLE: "REGEXP_SPLIT_TO_TABLE"i
+REGEXP_SUBSTR: "REGEXP_SUBSTR"i
+REPEAT: "REPEAT"i
+RPAD: "RPAD"i
+RTRIM: "RTRIM"i
+SPLIT_PART: "SPLIT_PART"i
+STARTS_WITH: "STARTS_WITH"i
+STRING_TO_ARRAY: "STRING_TO_ARRAY"i
+STRING_TO_TABLE: "STRING_TO_TABLE"i
+STRPOS: "STRPOS"i
+SUBSTR: "SUBSTR"i
+TO_ASCII: "TO_ASCII"i
+TO_HEX: "TO_HEX"i
+TRANSLATE: "TRANSLATE"i
+UNISTR: "UNISTR"i
+AGE: "AGE"i
+CLOCK_TIMESTAMP: "CLOCK_TIMESTAMP"i
+DATE_BIN: "DATE_BIN"i
+DATE_PART: "DATE_PART"i
+DATE_TRUNC: "DATE_TRUNC"i
+ISFINITE: "ISFINITE"i
+JUSTIFY_DAYS: "JUSTIFY_DAYS"i
+JUSTIFY_HOURS: "JUSTIFY_HOURS"i
+JUSTIFY_INTERVAL: "JUSTIFY_INTERVAL"i
+MAKE_DATE: "MAKE_DATE"i
+MAKE_INTERVAL: "MAKE_INTERVAL"i
+MAKE_TIME: "MAKE_TIME"i
+MAKE_TIMESTAMP: "MAKE_TIMESTAMP"i
+MAKE_TIMESTAMPTZ: "MAKE_TIMESTAMPTZ"i
+NOW: "NOW"i
+STATEMENT_TIMESTAMP: "STATEMENT_TIMESTAMP"i
+TIMEOFDAY: "TIMEOFDAY"i
+TRANSACTION_TIMESTAMP: "TRANSACTION_TIMESTAMP"i
+TO_TIMESTAMP: "TO_TIMESTAMP"i
+TO_CHAR: "TO_CHAR"i
+TO_DATE: "TO_DATE"i
+TO_NUMBER: "TO_NUMBER"i
+
+
+
+
+// String Constants
+STRING_CONSTANT: /'('')*([^']|'')*'/
+BINARY_STRING_CONSTANT: /B'[01]*'/
+HEXADECIMAL_STRING_CONSTANT: /X'[0-9A-F]*'/i
+
+// Numeric Constants
+INTEGRAL: /[0-9]+/
+SCIENTIFIC_NOTATION: /([0-9]+\.|[0-9]+\.[0-9]+|\.[0-9]+)[eE][+-]?[0-9]+/
+NUMERIC: /[0-9]+\.[0-9]+|[0-9]+|\.[0-9]+/
+
+// PL/SQL Variables
+PLSQLVARIABLENAME: /:[A-Z_][A-Z_0-9$]*/i
+PLSQLIDENTIFIER: /:"("\\"|""|[^"\\])*"/
+
+// Whitespace and Comments
+WS: /[ \t\r\n]+/
+LINE_COMMENT: /--[^\r\n]*/
+BLOCK_COMMENT: /\/\*([^*]|\*[^\/])*\*\//
+
+%ignore WS
+%ignore LINE_COMMENT
+%ignore BLOCK_COMMENT

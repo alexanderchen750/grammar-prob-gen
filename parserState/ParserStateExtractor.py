@@ -1,6 +1,5 @@
 from lark import Lark
 from lark.lexer import Token
-import hashlib
 import json
 from lark.exceptions import UnexpectedCharacters
 import os
@@ -14,17 +13,14 @@ Current solution: cache a parser, which should be consistent across runs
 TODO: Error Handling
 
 TODO: Performance
-Changing output formats to one hot encoding/tensor or something more efficient?can
 """
 
 class ParserStateExtractor:
     """
     Extracts consistent parser states from partial sequences using Lark's LALR parser.
-    Provides stable state IDs and stack elements that remain consistent between runs.
+    Provides stable state IDs and stack elements that remain consistent between runs by using a 
+    cached parser with mappings to ensure that the same grammar always produces the same state IDs.
     """
-    _global_state_counter = 0
-    _global_state_mapping = {} 
-    
     def __init__(self, grammar_text, mapping_file=None):
         """
         Initialize with a grammar string
@@ -32,25 +28,16 @@ class ParserStateExtractor:
         Args:
             grammar_text: The Lark grammar as a string
         """
-        # We'll calculate a grammar hash to ensure we detect grammar changes
-        grammar_hash = hashlib.md5(grammar_text.encode()).hexdigest()[:8]
     
-        self.parser = Lark(grammar_text, parser='lalr', cache=True,)
+        self.parser = Lark(grammar_text, parser='lalr', cache=True)
         self.interactive_parser = self.parser.parse_interactive('')
         self.tokens = []
         self.current_string = ""
         self.current_remainder = ""
         self.debug= False 
         self._state_mapping = self._initialize_state_mappings()
-        """
-        for state in self.interactive_parser.parser_state.parse_conf.parse_table.states:
-            # Get the state ID
-            print( self.interactive_parser.parser_state.parse_conf.parse_table.states[state].state_id)
-            print(" ")
-            # Get the consistent state ID
-            # Store the mapping
-        """
-
+        self.state_to_idx = {state: idx for idx, state in enumerate(sorted(self._state_mapping.values()))}
+        self.num_states = len(self.state_to_idx)
 
 
     def feed_input(self, text):
@@ -73,6 +60,7 @@ class ParserStateExtractor:
         """Get all tokens from the sequence"""
         lexer = self.parser.lex(sequence)
         return list(lexer)
+
     def get_tokens_with_remainder(self, sequence):
         try:
             # Try to tokenize the entire sequence
@@ -125,7 +113,7 @@ class ParserStateExtractor:
             return token_info, remainder
 
     def _initialize_state_mappings(self):
-        """Generate consistent state mappings by directly accessing the transition table"""
+        """Generate consistent state mappings by directly accessing the transition table wihtin lark"""
         parse_table = self.interactive_parser.parser_state.parse_conf.parse_table
         
         # Build fingerprints for all states directly from the transition table
@@ -189,6 +177,13 @@ class ParserStateExtractor:
         
         return state_mapping
 
+    def _encode_state_onehot(self, state_id):
+        """Convert state ID to one-hot vector"""
+        onehot = [0] * self.num_states
+        if state_id in self.state_to_idx:
+            onehot[self.state_to_idx[state_id]] = 1
+        return onehot
+
     def _get_consistent_state_id(self, state_id, parse_table):
         """
         Get consistent state ID from pre-computed mapping
@@ -214,34 +209,52 @@ class ParserStateExtractor:
                 
         return terminal_categories
 
-    def get_parser_state(self, interactive_parser, top_k=3):
+    def get_parser_state(self, interactive_parser, top_k=3, include_fields=None):
         """
-        Get the parser state from an interactive parser
+        Get the parser state from an interactive parser with configurable output
+        
+        Args:
+            interactive_parser: The Lark interactive parser
+            top_k: Number of stack elements to include
+            include_fields: List of fields to include. Options:
+                - 'current_state': Raw state ID  
+                - 'current_state_onehot': One-hot encoded state
+                - 'stack': Stack of Parser State IDs
+                - 'value_stack': Stack of terminal categories (e.g., token types)
+                Default: ['current_state_onehot'] (only one-hot encoding)
         """
-        # Get the current parser state
+        if include_fields is None:
+            include_fields = ['current_state']
+        
         parser_state = interactive_parser.parser_state
         parse_table = parser_state.parse_conf.parse_table
-        # Get raw state information
         raw_state_id = parser_state.position
-        raw_stack = list(parser_state.state_stack)
-        value_stack = list(parser_state.value_stack)
-        #print(value_stack)
-        #print(" ")
-        # Get the value stack
-        value_stack = self._get_value_stack(value_stack, top_k)
         
-        # Get consistent IDs for states
-        consistent_state_id = self._get_consistent_state_id(raw_state_id, parse_table)
-        consistent_stack = [self._get_consistent_state_id(s, parse_table) for s in raw_stack]
-        self.log("Stack:", consistent_stack)
-        self.log("State ID:", consistent_state_id)
+        result = {}
+        
+        if 'current_state' in include_fields or 'onehot_current_state' in include_fields:
+            consistent_state_id = self._get_consistent_state_id(raw_state_id, parse_table)
+            
+            if 'current_state' in include_fields:
+                result['current_state'] = consistent_state_id
+                
+            if 'onehot_current_state' in include_fields:
+                result['onehot_current_state'] = self._encode_state_onehot(consistent_state_id)
+        
+        if 'stack' in include_fields:
+            raw_stack = list(parser_state.state_stack)
+            consistent_stack = [self._get_consistent_state_id(s, parse_table) for s in raw_stack]
+            result['stack'] = consistent_stack if top_k is None else consistent_stack[-top_k:]
+        
+        if 'value_stack' in include_fields:
+            value_stack = list(parser_state.value_stack)
+            result['value_stack'] = self._get_value_stack(value_stack, top_k)
+        
+        self.log("Requested fields:", include_fields)
+        self.log("State ID:", result.get('current_state'))
         self.log("Raw State ID:", raw_state_id)
-        self.log("Raw Stack:", raw_stack)
-        return {
-            'current_state': consistent_state_id,
-            'stack': consistent_stack if top_k is None else consistent_stack[-top_k:],
-            'value_stack': value_stack,
-        }
+        
+        return result
 
     def parse_partial(self,  top_k=3):
         try:
@@ -260,7 +273,7 @@ class ParserStateExtractor:
         #result['remainder'] = self.current_remainder
         return result
     
-    def _analyze_incremental(self, sequence):
+    def analyze_incremental(self, sequence):
         """
         Analyze a sequence incrementally, returning the parser state at each step
         """
@@ -276,7 +289,7 @@ class ParserStateExtractor:
             for i, token in enumerate(all_tokens):
                 # Feed the next token
                 interactive.feed_token(token)
-                current_set = self.get_parser_state(interactive, top_k=None)
+                current_set = self.get_parser_state(interactive, top_k=3, include_fields=['current_state', 'stack', 'value_stack'])
                 current_set['text'] = all_tokens[:i + 1]
                 results.append(current_set)
             results[-1]['remainder'] = remainder
@@ -290,32 +303,6 @@ class ParserStateExtractor:
             })
                 
         return results
-
-    def analyze_incremental_char(self, sequence):
-        results = []
-        
-        # Keep track of how the stack evolves
-        state_evolution = []
-        
-        for i in range(1, len(sequence) + 1):
-            partial = sequence[:i]
-            result = self.parse_partial(partial)
-            
-            if result['success']:
-                state_evolution.append({
-                    'text': partial,
-                    'stack': result['stack'].copy() if 'stack' in result else []
-                })
-                
-            results.append({
-                'position': i,
-                'text': partial,
-                **result
-            })
-        
-        # Store evolution for analysis
-        self.state_evolution = state_evolution
-        return results
     
     def reset(self):
         """
@@ -325,14 +312,6 @@ class ParserStateExtractor:
         self.current_string = ""
         self.current_remainder = ""
         self.interactive_parser = self.parser.parse_interactive('')
-
-    def validate_state_consistency(self):
-        """Test that same input produces same states"""
-        test_input = "simple test"
-        state1 = self.advance_parser(test_input)
-        self.reset()
-        state2 = self.advance_parser(test_input)
-        assert state1 == state2, "States not consistent!"
 
 def extract_parser_states(grammar, sequence, top_k=None):
     return extractor.parse_partial(sequence, top_k)
@@ -396,21 +375,13 @@ if __name__ == "__main__":
     
     
     
-    """print("\nIncremental analysis:")
-    results = extractor._analyze_incremental(full_sequence)
-    
-    for r in results:
-        print(f"('{r['text']}'): ")
-        print(f"  State: {r['current_state']}")
-        print(f"  Stack: {r['stack']}")"""
-
-    """sequence = '{"name": "Alexander", "age": 25, "active": truxx'
-    results = extractor.analyze_incremental(sequence)
-    
-    for r in results:
-        if r['success']:
-            print(f"Position {r['position']} ('{r['text']}'): ")
+    """print("\nIncremental analysis:") #walk through the full sequence
+    results = extractor.analyze_incremental(full_sequence)
+    print(results)
+    if not results[-1].get('error'):  
+     
+        for r in results:
+            print(f"  Current Text: ('{r['text']}'): ")
             print(f"  State: {r['current_state']}")
-            print(f"  Stack: {r['stack']}")
-        else:
-            print(f"Position {r['position']} ('{r['text']}'): Error: {r['error']}")"""
+            print(f"  Value Stack: {r['value_stack']}")
+            print(f"  State Stack: {r['stack']}")"""

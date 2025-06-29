@@ -2,6 +2,7 @@ from .config   import Config
 from .model    import ModelManager
 from .scorer   import TokenProbabilityScorer
 from .runner   import run as ExperimentRunner
+from .tokenScorer import DataCollectingGrammarGuidedLLM
 
 
 from .processors.noop     import NoOpProcessor
@@ -14,4 +15,5 @@ __all__ = [
     "ExperimentRunner",
     "NoOpProcessor",
     "SyncodeProcessor",
+    "DataCollectingGrammarGuidedLLM"
 ]

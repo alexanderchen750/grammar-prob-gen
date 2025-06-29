@@ -3,7 +3,7 @@ from transformers import AutoTokenizer
 class LLMTokenizer:
     """Wrapper for LLM tokenizers to provide a consistent interface."""
     
-    def __init__(self, tokenizer_name="gpt2"):
+    def __init__(self, tokenizer_name="Qwen/Qwen3-4B"):
         """Initialize with a model name or tokenizer instance."""
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
     

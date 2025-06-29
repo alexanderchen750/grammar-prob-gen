@@ -1,5 +1,5 @@
-from LLMTokenizer import LLMTokenizer
-from ParserStateExtractor import ParserStateExtractor
+from .LLMTokenizer import LLMTokenizer
+from .ParserStateExtractor import ParserStateExtractor
 import json
 
 
@@ -7,9 +7,13 @@ import copy
 from itertools import islice
 
 class GrammarGuidedLLM:
-    """Integrates LLM, tokenizers, and parser for grammar-guided generation."""
+    """Integrates LLM, tokenizers, and parser for grammar-guided generation. 
+    This class processes text incrementally, extracting parser states and
+    managing lexical tokens. To ensure correct processing, it should fully lex the tokens first
+    in order to avoid partial tokens being processed incorrectly; even if full sentence is correct
+    some lark lexing may lead to temporarily lexed tokens that become invalid when addtioanl tokens are added."""
     
-    def __init__(self, grammar_text, llm_tokenizer_name="gpt2", stack_context_length=3, debug=False):
+    def __init__(self, grammar_text, llm_tokenizer_name="Qwen/Qwen3-4B", stack_context_length=3, debug=False):
         """Initialize with grammar and tokenizer settings."""
         self.parser_extractor = ParserStateExtractor(grammar_text)
         #self.parser_extractor.save_state_mapping("grammar_mapping.json")
@@ -24,15 +28,20 @@ class GrammarGuidedLLM:
     def process_instance(self, text):
         """
         Incrementally step through the LLM tokens, but only call
-        `advance_parser()` once we’ve *finished* at least one new
+        `advance_parser()` once we've *finished* at least one new
         lexical token.  Any partial token still in flight is kept in
         `remainder`.
+        NOTE: Input should be fully lexed first and we shouldn't advance parser
+        on lexically valid tokens that aren't the same as the lexical tokens in fully lexicalized text.
+        This is to ensure that we don't process partial tokens incorrectly.
+        Ex. Full string is 2.0, if we lex 2 as a integer, then get .0 as new token, may lead to incorrect output
+        This method should do that, but it is written terribly feel free to refactor it.
         """
-        llm_tokens      = self.llm_tokenizer.encode(text)
+
+        llm_tokens = self.llm_tokenizer.encode(text)
         lex_result = self.parser_extractor.get_lexical_tokens_with_positions(text)
         if isinstance(lex_result, tuple):
             lex_positions, rem = lex_result
-            #print("remaind", rem)
         else:
             lex_positions = lex_result
         results = []
@@ -63,14 +72,14 @@ class GrammarGuidedLLM:
                 )
                 remainder   = prefix_text[chunk_end:]             
                 result_set["remainder"] = remainder               
-                last_snapshot = copy.deepcopy(result_set)
+                last_snapshot =  result_set.copy()
 
                 last_lex_end_idx = chunk_end
                 cur_lex_idx      = new_lex_idx
             #No Lexical Token
             else:
                 # No lexical progress – clone previous result and extend remainder
-                result_set = copy.deepcopy(last_snapshot)
+                result_set = last_snapshot.copy()
                 dangling = prefix_text[last_lex_end_idx:]
                 result_set.setdefault("remainder", "")
                 result_set["remainder"] += dangling     # overwrite with fresh slice
@@ -87,7 +96,6 @@ class GrammarGuidedLLM:
                 self.log(f"   remainder      : «{result_set['remainder']}»")
         return results
 
-    
     def process_dataset(self, dataset):
         """Process a set of inputs to create training sets."""
         all_instances = []
@@ -104,3 +112,7 @@ class GrammarGuidedLLM:
                 print("Error: ", str(e))
                 continue
         return all_instances
+
+    def reset(self):
+        """Reset the parser state."""
+        self.parser_extractor.reset()

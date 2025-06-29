@@ -1,22 +1,24 @@
-from GrammarGuidedLLM import GrammarGuidedLLM
-from ParserStateExtractor import ParserStateExtractor
+from .GrammarGuidedLLM import GrammarGuidedLLM
+from .ParserStateExtractor import ParserStateExtractor
 import json
+import os
 
+
+"""Main function to process a dataset using a grammar-guided LLM parser.
+Reads a grammar file and a dataset file, processes the dataset using the parser,
+and writes the results to an output file.
+"""
 def main(output_file):
-    # File paths - manually change these as needed
-    grammar_file = "SQL.lark"
-    dataset_file = "SQL_sample.txt"
-    #output_file = "results1.txt"
 
-    # Fallback dataset if the file can't be opened
-    
+    # File paths - manually change these as needed
+    this_dir = os.path.dirname(__file__)
+    grammar_file = os.path.join(this_dir, "grammars", "SQL.lark")
+    dataset_file = os.path.join(this_dir, "SQL_sample.txt")
     
     # Read grammar from file
     with open(grammar_file, 'r') as f:
         grammar = f.read()
 
-  
-    
     # Read dataset from file
     if dataset_file.endswith(".txt"):
         with open(dataset_file, 'r') as f:
@@ -50,7 +52,6 @@ def main(output_file):
             continue
         """
     # Process dataset
-    #print(f"Processing {len(dataset)} examples...")
     results = builder.process_dataset(dataset)
     
     # Write results to file
@@ -58,10 +59,9 @@ def main(output_file):
         json.dump(results, f, indent=2)
     
     print(f"Results written to {output_file}")
-    #print(f"Total errors encountered: {error_count}")
+    builder.reset()  # Reset the parser state extractor
+    
 
 if __name__ == "__main__":
     main("results1.txt")
     main("results2.txt")
-    #main("results3.txt")
-    #main("results3.txt")

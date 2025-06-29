@@ -4,6 +4,8 @@ from .base import LogitsProcessor
 from syncode import SyncodeLogitsProcessor, Grammar
 
 class SyncodeProcessor(LogitsProcessor):
+    """Logit Processor for Syncode grammar-guided token scoring.""" 
+
     def __init__(self, grammar_path: Path, tokenizer, parse_output_only=True):
         with open(grammar_path, "r") as f:
             grammar = Grammar(f.read())

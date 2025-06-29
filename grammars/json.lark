@@ -1,4 +1,3 @@
-// Adapted from https://github.com/lapp0/outlines
 ?start: start_value
 
 ?start_value: object

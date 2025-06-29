@@ -18,4 +18,4 @@ class ModelManager:
 
     @torch.inference_mode()
     def forward(self, input_ids: torch.LongTensor) -> torch.Tensor:
-        return self.model(input_ids).logits        # (1, seq_len, vocab)
+        return self.model(input_ids).logits

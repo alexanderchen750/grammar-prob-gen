@@ -1,12 +1,12 @@
 from pathlib import Path
 from typing import List
-from scorer import StepResult
 
 class Reporter:
+    """Reporter for writing results to a file."""
     def __init__(self, out_file: Path):
         self.f = open(out_file, "w", encoding="utf-8")
 
-    def write(self, results: List[StepResult], tag: str):
+    def write(self, results, tag: str):
         self.f.write(f"=== {tag} ===\n\n")
         for r in results:
             self.f.write(

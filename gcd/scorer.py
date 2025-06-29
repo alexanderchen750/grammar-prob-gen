@@ -12,6 +12,12 @@ class StepResult:
     top_tokens: List[str]
     top_probs: List[float]
 
+"""
+Scorer for evaluating token probabilities in a sequence.
+NOTE: I used this for runner.py, but in practice it is not used in the current setup in main.py
+In tokenScorer.py, I just directly find the logits.
+"""
+
 class TokenProbabilityScorer:
     def __init__(self, tokenizer, top_k: int = 10):
         self.tok = tokenizer
@@ -19,8 +25,8 @@ class TokenProbabilityScorer:
 
     def score(
         self,
-        ids: torch.LongTensor,           # (1, seq_len)
-        logits_seq: torch.Tensor,        # (1, seq_len, vocab)
+        ids: torch.LongTensor,           
+        logits_seq: torch.Tensor,      
         processor
     ) -> List[StepResult]:
 
@@ -40,7 +46,7 @@ class TokenProbabilityScorer:
             results.append(
                 StepResult(
                     step=i + 1,
-                    prev_token=self.tok.decode([ids[0, i]]) if i >= 0 else "<BOS>",
+                    prev_token=self.tok.decode([ids[0, i]]) if i >= 0 else "<BOS>", #add starting token
                     target_token=self.tok.decode([target_id]),
                     target_prob=log_probs[target_id].item(),
                     top_tokens=[self.tok.decode([t.item()]) for t in topk.indices],

@@ -1,12 +1,17 @@
 from pathlib import Path
 from typing import List, Iterable
-from config import Config
-from model import ModelManager
-from processors import NoOpProcessor, SyncodeProcessor
-from scorer import TokenProbabilityScorer
-from reporter import Reporter
+from .config import Config
+from .model import ModelManager
+from .processors import NoOpProcessor, SyncodeProcessor
+from .scorer import TokenProbabilityScorer
+from .reporter import Reporter
 import os
 import time
+
+
+""" This module provides the main runner for the grammar-guided token scoring experiment.
+It initializes the model, processes the input texts, and scores the tokens using specified processors.
+"""
 
 def iter_texts(cfg: Config) -> Iterable[str]:
     if cfg.corpus:
@@ -25,7 +30,6 @@ def run(cfg: Config):
     processors = {
         "baseline": NoOpProcessor(),
         "syncode":  SyncodeProcessor(cfg.grammar_path, model_mgr.tokenizer),
-        # "stackaware": StackAwareProcessor(...),   # drop-in later
     }
 
     start_total = time.perf_counter()
@@ -49,7 +53,7 @@ def run(cfg: Config):
     print(f" Total time for data: {time.perf_counter() - start_total:.3f}s")
 
 if __name__ == "__main__":
-    with open("sqlprompts.txt", "r", encoding="utf-8") as f:
+    with open("jsonprompts.txt", "r", encoding="utf-8") as f:
         prompt_lines = [line.strip() for line in f if line.strip()]
 
     cfg = Config(
