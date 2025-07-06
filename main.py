@@ -7,7 +7,6 @@ from gcd.tokenScorer import DataCollectingGrammarGuidedLLM
 from pathlib import Path
 from typing import List, Iterable, Dict
 import torch
-import pandas as pd
 from pathlib import Path
 import json
 import gc
