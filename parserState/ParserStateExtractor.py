@@ -385,3 +385,77 @@ if __name__ == "__main__":
             print(f"  State: {r['current_state']}")
             print(f"  Value Stack: {r['value_stack']}")
             print(f"  State Stack: {r['stack']}")"""
+
+def test_parser_state_consistency(grammar_text, test_inputs):
+    """
+    Verify that the parser state extraction is consistent across multiple instances, i.e. the caching works correctly.
+    
+    Args:
+        grammar_text: The grammar text to use
+        test_inputs: List of test strings to parse
+        
+    Returns:
+        Boolean indicating whether all tests passed
+    """
+    print("Running parser state consistency test...")
+    
+    # Create two separate parser extractors with the same grammar
+    print("Creating first parser instance...")
+    extractor1 = ParserStateExtractor(grammar_text)
+    
+    print("Creating second parser instance...")
+    extractor2 = ParserStateExtractor(grammar_text)
+    
+    # First test: Compare state mappings
+    print("\n1. Testing state mapping consistency...")
+    mapping1 = extractor1._state_mapping
+    mapping2 = extractor2._state_mapping
+    
+    if len(mapping1) != len(mapping2):
+        print(f"State mapping size mismatch: {len(mapping1)} vs {len(mapping2)}")
+        return False
+    
+    mapping_matches = True
+    for state_id in mapping1:
+        if state_id in mapping2 and mapping1[state_id] == mapping2[state_id]:
+            continue
+        else:
+            print(f"State mapping mismatch for state {state_id}")
+            mapping_matches = False
+            break
+    
+    if mapping_matches:
+        print(f"State mappings match ({len(mapping1)} states)")
+    
+    # Second test: Process test inputs and compare results
+    print("\n2. Testing parsing consistency...")
+    all_tests_passed = True
+    
+    for i, test_input in enumerate(test_inputs):
+        print(f"\nTesting input {i+1}: '{test_input[:40]}...'")
+        
+        # Reset both extractors
+        extractor1.reset()
+        extractor2.reset()
+        
+        # Process with both extractors
+        result1 = extractor1.advance_parser(test_input)
+        result2 = extractor2.advance_parser(test_input)
+        
+        # Compare parser states
+        if result1.get('current_state') != result2.get('current_state'):
+            print(f"State mismatch: {result1.get('current_state')} vs {result2.get('current_state')}")
+            all_tests_passed = False
+        else:
+            print(f"States match: {result1.get('current_state')}")
+            
+        # Compare one-hot encodings if present
+        if 'onehot_current_state' in result1 and 'onehot_current_state' in result2:
+            if result1['onehot_current_state'] != result2['onehot_current_state']:
+                print("One-hot encoding mismatch")
+                all_tests_passed = False
+            else:
+                print("One-hot encodings match")
+    
+    print("\nFinal result:", "PASSED" if all_tests_passed and mapping_matches else "FAILED")
+    return all_tests_passed and mapping_matches

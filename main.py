@@ -10,6 +10,7 @@ import torch
 from pathlib import Path
 import json
 import gc
+import sys
 
 def main():
     print("Starting training data collection...")
@@ -94,5 +95,29 @@ def main():
         torch.save(data_dict, output_path)
         print(f"Final save: {len(all_features)} samples")
 
+def parser_sanity_test():
+    """Wrapper function to run the parser state consistency test"""
+    print("\n=== RUNNING PARSER STATE CONSISTENCY TEST ===")
+    
+   
+    with open("grammars/json.lark", 'r') as f:
+        grammar_text = f.read()
+    
+    
+    test_inputs = [
+        '{"name": "Alice", "age": 30}',
+        '{"user": {"name": "Bob", "active": true}}',
+        '[1, 2, {"key": "value"}]',
+        '{"name": "Complex", "nested": {"array": [1, 2, {"deep": null}]}}'
+    ]
+    
+    result = ParserStateExtractor.test_parser_state_consistency(grammar_text, test_inputs)
+    return result
+
 if __name__ == "__main__":
-    main()
+       
+    if len(sys.argv) > 1 and sys.argv[1] == "--test-parser":
+        success = parser_sanity_test()
+        sys.exit(0 if success else 1)
+    else:
+        main()
