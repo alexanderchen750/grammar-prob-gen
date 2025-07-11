@@ -1,0 +1,6 @@
+?start: start_value
+
+start_value: "00000" | "1" BIT BIT BIT BIT
+
+BIT: "0" | "1"
+
