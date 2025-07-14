@@ -16,11 +16,11 @@ def main():
     print("Starting training data collection...")
 
     # Load grammar
-    with open("grammars/json.lark", 'r') as f:
+    with open("grammars/gad.lark", 'r') as f:
         grammar_text = f.read()
 
     # Load dataset
-    with open("jsonprompts.txt", 'r') as f:
+    with open("gadprompts.txt", 'r') as f:
         texts = [line.strip() for line in f if line.strip()]
 
     # Initialize model and processors
