@@ -267,9 +267,9 @@ class ParserStateExtractor:
                 'success': False,
             }
         
-    def advance_parser(self, sequence, top_k=3):
+    def advance_parser(self, sequence, top_k=3, prefix_text=None):
         self.feed_input(sequence)
-        result = self.get_parser_state(self.interactive_parser, top_k=top_k)
+        result = self.get_parser_state_for_prefix(prefix_text=prefix_text, top_k=top_k)
         #result['remainder'] = self.current_remainder
         return result
     
@@ -312,6 +312,40 @@ class ParserStateExtractor:
         self.current_string = ""
         self.current_remainder = ""
         self.interactive_parser = self.parser.parse_interactive('')
+
+    def get_parser_state_for_prefix(self, prefix_text, top_k=3):
+        """
+        Get parser state for each prefix of the text, returning parser states for all prefixes.
+        This extends get_parser_state with prefix handling capabilities.
+
+        Args:
+            prefix_text: The text prefix to analyze
+            top_k: Number of stack elements to include
+
+        Returns:
+            List of parser state information for each prefix
+        """
+        parser_state = self.interactive_parser.parser_state
+        parse_table = parser_state.parse_conf.parse_table
+        raw_state_id = parser_state.position
+
+        result = {}
+
+        consistent_state_id = self._get_consistent_state_id(raw_state_id, parse_table)
+        result['current_state'] = consistent_state_id
+        result['onehot_current_state'] = self._encode_state_onehot(consistent_state_id)
+        result['prefix_text'] = prefix_text
+
+        raw_stack = list(parser_state.state_stack)
+        consistent_stack = [self._get_consistent_state_id(s, parse_table) for s in raw_stack]
+        result['stack'] = consistent_stack if top_k is None else consistent_stack[-top_k:]
+
+        value_stack = list(parser_state.value_stack)
+        result['value_stack'] = self._get_value_stack(value_stack, top_k)
+
+        return result
+
+
 
 def extract_parser_states(grammar, sequence, top_k=None):
     return extractor.parse_partial(sequence, top_k)

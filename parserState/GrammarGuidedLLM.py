@@ -66,12 +66,16 @@ class GrammarGuidedLLM:
                 chunk_start   = last_lex_end_idx
                 chunk_end     = lex_positions[new_lex_idx][1]
                 completed     = text[chunk_start:chunk_end]
+                
+                # Correct prefix text should be everything except the remainder
+                remainder   = prefix_text[chunk_end:]
+                correct_prefix = prefix_text[:chunk_end]
 
                 result_set = self.parser_extractor.advance_parser(
-                    completed, top_k=self.stack_context_length
+                    completed, top_k=self.stack_context_length, prefix_text=correct_prefix
                 )
-                remainder   = prefix_text[chunk_end:]             
-                result_set["remainder"] = remainder               
+                result_set["remainder"] = remainder
+                result_set["full_remainder"] = text[chunk_end:]
                 last_snapshot =  result_set.copy()
 
                 last_lex_end_idx = chunk_end
@@ -83,6 +87,8 @@ class GrammarGuidedLLM:
                 dangling = prefix_text[last_lex_end_idx:]
                 result_set.setdefault("remainder", "")
                 result_set["remainder"] += dangling     # overwrite with fresh slice
+                result_set["full_remainder"] += text[last_lex_end_idx:]
+                result_set["prefix_text"] = prefix_text[:last_lex_end_idx]
 
             #next token
             next_tok_str = (self.llm_tokenizer.decode([llm_tokens[i + 1]])
