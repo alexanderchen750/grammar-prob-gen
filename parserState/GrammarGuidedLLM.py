@@ -86,6 +86,7 @@ class GrammarGuidedLLM:
                 result_set = last_snapshot.copy()
                 dangling = prefix_text[last_lex_end_idx:]
                 result_set.setdefault("remainder", "")
+                result_set.setdefault("full_remainder", "")
                 result_set["remainder"] += dangling     # overwrite with fresh slice
                 result_set["full_remainder"] += text[last_lex_end_idx:]
                 result_set["prefix_text"] = prefix_text[:last_lex_end_idx]
