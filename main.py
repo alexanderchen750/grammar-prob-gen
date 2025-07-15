@@ -11,6 +11,8 @@ from pathlib import Path
 import json
 import gc
 import sys
+import pandas as pd
+
 
 def main():
     print("Starting training data collection...")
@@ -36,11 +38,10 @@ def main():
     output_path = Path("training_data/grammar_data.pt")
     output_path.parent.mkdir(exist_ok=True)
 
-    all_features = []
-    all_targets = []
+    all_data_points = []
 
     for text_idx, text in enumerate(texts):
-        print(f"Processing text {text_idx+1}/{len(texts)}: {text[:50]}...")
+        print(f"Processing text {text_idx + 1}/{len(texts)}: {text[:50]}...")
 
         try:
             # Collect data for this text
@@ -53,31 +54,20 @@ def main():
             )
 
             # Process data points
+            # new: just stash the raw arrays/lists into our list of dicts
+
             for dp in data_points:
-                parser_state = torch.tensor(dp['parser_state'], dtype=torch.float32)
-                syncode_logprobs = torch.tensor(dp['syncode_logprobs'], dtype=torch.float32)
-                baseline_logprobs = torch.tensor(dp['baseline_logprobs'], dtype=torch.float32)
-
-                x = torch.cat([parser_state, syncode_logprobs])
-                y = baseline_logprobs
-
-                all_features.append(x)
-                all_targets.append(y)
+                all_data_points.append({
+                    "parser_state": dp['parser_state'],
+                    "syncode_logprobs": dp['syncode_logprobs'],
+                    "baseline_logprobs": dp['baseline_logprobs'],
+                })
 
             ggllm.reset()
 
             # Save every 20 texts
             if (text_idx + 1) % 100 == 0:
-                data_dict = {
-                    "X": torch.stack(all_features),
-                    "Y": torch.stack(all_targets),
-                }
-                torch.save(data_dict, output_path)
-                print(f"Saved {len(all_features)} samples after {text_idx+1} texts")
 
-                # Clear memory
-                all_features.clear()
-                all_targets.clear()
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -88,35 +78,34 @@ def main():
             continue
 
     # Save final batch
-    if all_features:
-        data_dict = {
-            "X": torch.stack(all_features),
-            "Y": torch.stack(all_targets),
-        }
-        torch.save(data_dict, output_path)
-        print(f"Final save: {len(all_features)} samples")
+    if all_data_points:
+        df = pd.DataFrame(all_data_points)
+        print(df.head())
+        df.to_pickle("training_data/grammar_data_df.pkl")
+        print(f"Saved DataFrame with {len(df)} rows to pickle")
+        print(f"Final save: {len(all_data_points)} samples")
+
 
 def parser_sanity_test():
     """Wrapper function to run the parser state consistency test"""
     print("\n=== RUNNING PARSER STATE CONSISTENCY TEST ===")
-    
-   
+
     with open("grammars/json.lark", 'r') as f:
         grammar_text = f.read()
-    
-    
+
     test_inputs = [
         '{"name": "Alice", "age": 30}',
         '{"user": {"name": "Bob", "active": true}}',
         '[1, 2, {"key": "value"}]',
         '{"name": "Complex", "nested": {"array": [1, 2, {"deep": null}]}}'
     ]
-    
+
     result = ParserStateExtractor.test_parser_state_consistency(grammar_text, test_inputs)
     return result
 
+
 if __name__ == "__main__":
-       
+
     if len(sys.argv) > 1 and sys.argv[1] == "--test-parser":
         success = parser_sanity_test()
         sys.exit(0 if success else 1)
