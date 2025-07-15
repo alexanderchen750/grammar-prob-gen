@@ -10,6 +10,8 @@ if __name__ == "__main__":
 
     parser = Lark(grammar_text, parser='lalr', lexer='contextual')
 
+
+
     test_examples = ["10001","00000", "10000", "11111", "111111", "01000", "00001"]
 
     for test_example in test_examples:
@@ -20,14 +22,23 @@ if __name__ == "__main__":
                 tree = parser.parse(test_example)
                 child = tree.children
             except Exception as e:
-                print(e)
+                print("")
 
             for token in stream:
                 print(token)
                 print(interactive_parser.accepts())
                 if 'BIT' in interactive_parser.accepts() and token.value == '1':#shortcut
-                    token = Token('BIT', token.value)
+                    token.type = 'BIT'
                     print(token)
+                elif 'BIT' in interactive_parser.accepts() and token.value == '0':#shortcut
+                    token.type = 'BIT'
+                    print(token)
+                elif 'ZERO' in interactive_parser.accepts() and token.value == '0':#shortcut
+                    token.type = 'ZERO'
+                    print(token)
+
+
+
 
                 interactive_parser.feed_token(token)
             print(f"success: {test_example}", tree)
