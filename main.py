@@ -84,6 +84,7 @@ def main():
 
         except Exception as e:
             print(f"Error processing text {text_idx}: {e}")
+            ggllm.reset()
             continue
 
     # Save final batch
