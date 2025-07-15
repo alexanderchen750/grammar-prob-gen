@@ -69,6 +69,11 @@ class ParserStateExtractor:
             for token in tokens:
                 if 'BIT' in self.interactive_parser.accepts() and token.value == '1':  # TODO change shortcut to something more robust, this is like a lookahead rn
                     token.type = 'BIT'
+                elif 'BIT' in self.interactive_parser.accepts() and token.value == '0':
+                    token.type = 'BIT'
+                elif 'ZERO' in self.interactive_parser.accepts() and token.value == '0':
+                    token.type = 'ZERO'
+
             
             # If we have tokens, check if they cover the entire input
             if tokens:
