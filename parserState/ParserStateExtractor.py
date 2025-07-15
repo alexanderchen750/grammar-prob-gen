@@ -65,6 +65,10 @@ class ParserStateExtractor:
         try:
             # Try to tokenize the entire sequence
             tokens = list(self.parser.lex(sequence))
+
+            for token in tokens:
+                if 'BIT' in self.interactive_parser.accepts() and token.value == '1':  # TODO change shortcut to something more robust, this is like a lookahead rn
+                    token.type = 'BIT'
             
             # If we have tokens, check if they cover the entire input
             if tokens:
