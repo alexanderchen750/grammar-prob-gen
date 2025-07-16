@@ -59,7 +59,7 @@ class ParserStateExtractor:
 
 
             self.interactive_parser.feed_token(token)
-        self.tokens = new_tokens
+        self.tokens.extend(different_tokens)
         
     def log(self, *args):
         if self.debug:
