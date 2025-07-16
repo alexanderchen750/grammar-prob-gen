@@ -49,6 +49,15 @@ class ParserStateExtractor:
         new_tokens, self.current_remainder = self.get_tokens_with_remainder(self.current_string)
         different_tokens = new_tokens[len(self.tokens):]
         for token in different_tokens:
+
+            if 'BIT' in self.interactive_parser.accepts() and token.value == '1':  # TODO change shortcut to something more robust, this is like a lookahead rn
+                token.type = 'BIT'
+            elif 'BIT' in self.interactive_parser.accepts() and token.value == '0':
+                token.type = 'BIT'
+            elif 'ZERO' in self.interactive_parser.accepts() and token.value == '0':
+                token.type = 'ZERO'
+
+
             self.interactive_parser.feed_token(token)
         self.tokens = new_tokens
         
@@ -66,15 +75,6 @@ class ParserStateExtractor:
             # Try to tokenize the entire sequence
             tokens = list(self.parser.lex(sequence))
 
-            for token in tokens:
-                if 'BIT' in self.interactive_parser.accepts() and token.value == '1':  # TODO change shortcut to something more robust, this is like a lookahead rn
-                    token.type = 'BIT'
-                elif 'BIT' in self.interactive_parser.accepts() and token.value == '0':
-                    token.type = 'BIT'
-                elif 'ZERO' in self.interactive_parser.accepts() and token.value == '0':
-                    token.type = 'ZERO'
-
-            
             # If we have tokens, check if they cover the entire input
             if tokens:
                 last_token_end = tokens[-1].end_pos
