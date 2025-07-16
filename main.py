@@ -58,9 +58,16 @@ def main():
 
             for dp in data_points:
                 all_data_points.append({
-                    "parser_state": dp['parser_state'],
+                    "parser_state_onehot": dp['parser_state_onehot'],
                     "syncode_logprobs": dp['syncode_logprobs'],
                     "baseline_logprobs": dp['baseline_logprobs'],
+                    "parser_state": dp['parser_state'],
+                    "remainder": dp['remainder'],
+                    "full_remainder": dp['full_remainder'],
+                    "prefix_text": dp['prefix_text'],
+                    "next_token": dp['next_token'],
+                    "stack": dp['stack'],
+                    "value_stack": dp['value_stack'],
                 })
 
             ggllm.reset()

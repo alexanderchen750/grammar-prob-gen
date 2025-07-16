@@ -54,7 +54,14 @@ class DataCollectingGrammarGuidedLLM(GrammarGuidedLLM):
             data_point = {
                 'baseline_logprobs': baseline_logprobs.detach().cpu().numpy(), 
                 'syncode_logprobs': syncode_logprobs.detach().cpu().numpy(),
-                'parser_state': parser_result.get('onehot_current_state', []),
+                'parser_state_onehot': parser_result.get('onehot_current_state', []),
+                'parser_state': parser_result.get('current_state', []),
+                'remainder': parser_result.get('remainder', []),
+                'full_remainder': parser_result.get('full_remainder', []),
+                'prefix_text': parser_result.get('prefix_text', []),
+                'next_token': parser_result.get('next_token', []),
+                'stack': parser_result.get('stack', []),
+                'value_stack': parser_result.get('value_stack', []),
                 'position': i
             }
             training_data.append(data_point)
