@@ -126,11 +126,14 @@ sequence_logps = {}  # raw log-prob of each sequence
 for seq_id, group in df.groupby("sequence_id"):
     tokens = []
     logp = 0.0
-    for _, row in group.iterrows():
+    for i, row in group.iterrows():
         token_id = int(row["next_token_id"])
         token_logp = row["baseline_logprobs"][token_id]
         logp += token_logp
-        tokens.append(str(row["next_token"]))
+        if i % 5 == 0:
+            tokens.append(row["prefix_text"])
+        if row["next_token"]:
+            tokens.append(str(row["next_token"]))
     seq = "".join(tokens)
     sequence_logps[seq] = logp
 
@@ -150,7 +153,7 @@ syncode_counts = {seq: 0 for seq in valid_sequences}
 num_samples = 1000
 
 for _ in range(num_samples):
-    out = syncode.infer(prompt="")  # assumes grammar allows generation from empty prompt?
+    out = syncode.infer(prompt="Generate a random sequence:")  # assumes grammar allows generation from empty prompt?
     output = out[0].strip()
     if output in syncode_counts:
         syncode_counts[output] += 1
@@ -164,27 +167,44 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
     our_counts = {seq: 0 for seq in valid_sequences}
 
     for _ in range(num_samples):
-        generated = ""
-        for step in range(5):
-            # filter df for rows matching current prefix
+        # Step 1: start with empty prefix → get valid next token
+        row0 = df[df["prefix_text"] == "0"].iloc[0]
+        row1 = df[df["prefix_text"] == "1"].iloc[0]
+
+        probs = []
+        for row in [row0, row1]:
+            shift = f(row["parser_state_onehot"], row["stack"], row["remainder"])
+            logits = np.array(row["syncode_logprobs"])
+            adjusted = logits + shift
+            probs.append(adjusted)
+
+        probs = np.vstack(probs)  # shape (2, V)
+        probs = np.exp(probs - np.max(probs, axis=1, keepdims=True))
+        probs = probs / probs.sum(axis=1, keepdims=True)
+
+        # 0 or 1 prefix
+        p0 = probs[0][tokenizer.encode("0", add_special_tokens=False)[0]]
+        p1 = probs[1][tokenizer.encode("1", add_special_tokens=False)[0]]
+        p = np.array([p0, p1])
+        p = p / p.sum()
+
+        generated = np.random.choice(["0", "1"], p=p)
+
+        # Continue sampling the rest of the string
+        for step in range(4):  # already sampled 1
             matching_rows = df[df["prefix_text"] == generated]
             if matching_rows.empty:
-                break  # invalid path
+                break
 
             row = matching_rows.iloc[0]
             logits = np.array(row["syncode_logprobs"])
-
-            # apply your model shift
             shift = f(row["parser_state_onehot"], row["stack"], row["remainder"])
             adjusted_logits = logits + shift
             probs = np.exp(adjusted_logits - np.max(adjusted_logits))
             probs = probs / probs.sum()
 
-            # pick next token based on shifted distribution
             next_token_id = np.random.choice(len(probs), p=probs)
             next_token = tokenizer.decode([next_token_id]).strip()
-
-            # if somehow gets weird token (e.g. special), stop
             if next_token not in ["0", "1"]:
                 break
 
@@ -194,6 +214,7 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
             our_counts[generated] += 1
 
     return our_counts
+
 
 our_counts = sample_from_ours(df, f, tokenizer, num_samples=1000)
 total = sum(our_counts.values())
