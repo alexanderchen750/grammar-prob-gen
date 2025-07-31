@@ -222,8 +222,35 @@ total = sum(our_counts.values())
 p_ours = {seq: count / total for seq, count in our_counts.items()}
 
 # KL divergence to ground truth
-def kl_div(p, q, eps=1e-12):
-    return sum(p[x] * np.log(p[x] / (q.get(x, eps) + eps)) for x in p if p[x] > 0)
+def kl_div(p, q, epsilon=1e-12):
+    """
+    Computes KL(p || q) where p and q are dicts representing probability distributions.
+    Adds epsilon smoothing to avoid division by zero or log(0).
+    Prints any keys that are only in one of the distributions.
+    """
+
+    all_keys = set(p.keys()).union(q.keys())
+    only_in_p = set(p.keys()) - set(q.keys())
+    only_in_q = set(q.keys()) - set(p.keys())
+
+    if only_in_p:
+        print("[KL WARNING] Keys in p but not in q:", sorted(only_in_p))
+    if only_in_q:
+        print("[KL WARNING] Keys in q but not in p:", sorted(only_in_q))
+
+    total = 0.0
+    for x in all_keys:
+        px = p.get(x, 0.0)
+        qx = q.get(x, 0.0)
+
+        # Add epsilon smoothing
+        px = max(px, epsilon)
+        qx = max(qx, epsilon)
+
+        total += px * np.log(px / qx)
+
+    return total
+
 
 
 kl_syncode = kl_div(px_given_alpha, p_syncode)
