@@ -152,7 +152,7 @@ px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}"""
 with open("grammars/gad.lark", 'r') as file:
     grammar_text = file.read()
 
-syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True, tokenizer=tokenizer)
+syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True)
 syncode_counts = {seq: 0 for seq in valid_sequences}
 num_samples = 1000
 
