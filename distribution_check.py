@@ -186,13 +186,13 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
         p = np.array([p0, p1])
         p = p / p.sum()
 
-        generated = [np.argmax(p)]
+        generated = np.random.choice(["0", "1"], p=p)
 
         # Continue sampling the rest of the string
         for step in range(4):  # already sampled 1
             matching_rows = df[df["prefix_text"] == generated]
             if matching_rows.empty:#incorrect generation
-                break # for example probs for the prefix "0" can be [0.64, 0.36] for 0 and 1 respectively and we can choose 1 as the next token here which gives an incorrect generation
+                break # for example probs for the prefix "0" can be [0.64, 0.36] for 0 and 1 respectively and we can choose 1 as the next token here which gives an incorrect generation for random sampling np.random.choice(["0", "1"], p=p)
 
             row = matching_rows.iloc[0]
             logits = np.array(row["syncode_logprobs"])
@@ -201,7 +201,7 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
             probs = np.exp(adjusted_logits - np.max(adjusted_logits))
             probs = probs / probs.sum()
 
-            next_token_id = np.random.choice(len(probs), p=probs)
+            next_token_id =  np.argmax(probs)
             next_token = tokenizer.decode([next_token_id]).strip()
             if next_token not in ["0", "1"]:
                 break
