@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from syncode import Syncode
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
@@ -36,7 +36,6 @@ def next_id_or_argmax(row_df):
         return ids[0] if ids else tokenizer.eos_token_id
     else:
         logprobs = np.array(row_df["syncode_logprobs"])
-        print("nextid",int(np.argmax(logprobs)))
         return int(np.argmax(logprobs))  # index of highest logprob
 
 
@@ -101,11 +100,11 @@ with open("gadprompts.txt", 'r') as file:
     valid_sequences = [line.strip() for line in file if line.strip()]
 
 #the below approached failed due to not loading the model correctly: todo instead of a notebook have a py script to run on VM
-"""tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
+tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
 model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-4B")
 model.eval()
 
-# 3. Compute P(x) for each valid sequence using original LLM
+# compute P(x) for each valid sequence using original LLM
 log_probs = {}
 for seq in valid_sequences:
     inputs = tokenizer(seq, return_tensors="pt")
@@ -117,12 +116,12 @@ for seq in valid_sequences:
         token_log_probs = torch.gather(log_softmax, 2, labels.unsqueeze(-1)).squeeze(-1)
         log_probs[seq] = token_log_probs.sum().item()  # log P(x)
 
-# 4. Compute normalized constrained distribution P(x|α)
+# compute normalized constrained distribution P(x|α)
 seq_probs = {seq: np.exp(lp) for seq, lp in log_probs.items()}
 Z = sum(seq_probs.values())
-px_given_alpha = {seq: p / Z for seq, p in seq_probs.items()}"""
+px_given_alpha = {seq: p / Z for seq, p in seq_probs.items()}
 
-sequence_logps = {}  # raw log-prob of each sequence
+"""sequence_logps = {}  # raw log-prob of each sequence
 for seq_id, group in df.groupby("sequence_id"):
     tokens = []
     logp = 0.0
@@ -142,7 +141,7 @@ sequence_probs = {seq: np.exp(lp) for seq, lp in sequence_logps.items()}
 
 # normalize to get P(x | alpha)
 Z = sum(sequence_probs.values())
-px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}
+px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}"""
 
 # generate samples using Syncode
 with open("grammars/gad.lark", 'r') as file:
@@ -201,7 +200,7 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
             probs = np.exp(adjusted_logits - np.max(adjusted_logits))
             probs = probs / probs.sum()
 
-            next_token_id =  np.argmax(probs)
+            next_token_id = np.random.choice(len(probs), p=probs)
             next_token = tokenizer.decode([next_token_id]).strip()
             if next_token not in ["0", "1"]:
                 break
