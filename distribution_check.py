@@ -222,23 +222,8 @@ total = sum(our_counts.values())
 p_ours = {seq: count / total for seq, count in our_counts.items()}
 
 # KL divergence to ground truth
-def kl_div(p, q, epsilon=1e-12):
-    all_keys = set(p.keys()).union(q.keys())
-    total = 0.0
-    for x in all_keys:
-        px = p.get(x, 0.0)
-        qx = q.get(x, 0.0)
-
-        # Add epsilon smoothing
-        px = max(px, epsilon)
-        qx = max(qx, epsilon)
-
-        contrib = px * np.log(px / qx)
-        if contrib < 0:
-            print(f"Negative contrib at '{x}': px={px:.5f}, qx={qx:.5f}, log(px/qx)={np.log(px/qx):.5f}")
-
-        total += contrib
-    return total
+def kl_div(p, q, eps=1e-12):
+    return sum(p[x] * np.log(p[x] / (q.get(x, eps) + eps)) for x in p if p[x] > 0)
 
 
 kl_syncode = kl_div(px_given_alpha, p_syncode)
