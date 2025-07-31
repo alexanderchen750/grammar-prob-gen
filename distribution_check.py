@@ -104,7 +104,7 @@ with open("gadprompts.txt", 'r') as file:
     valid_sequences = [line.strip() for line in file if line.strip()]
 
 # the below approached failed due to OOM when loading the model
-model = AutoModelForCausalLM.from_pretrained(model_name="Qwen/Qwen3-4B", device_map="auto",
+model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-4B", device_map="auto",
                                              torch_dtype=getattr(torch, "float16"))
 model.eval()
 
