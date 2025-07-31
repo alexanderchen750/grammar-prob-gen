@@ -159,6 +159,10 @@ for _ in range(num_samples):
 
 p_syncode = {seq: count / num_samples for seq, count in syncode_counts.items()}
 
+print("p_syncode:")
+for seq, prob in p_syncode.items():
+    print(f"{seq}: {prob:.6f}")
+
 # generate samples from our model?
 def sample_from_ours(df, f, tokenizer, num_samples=1000):
     our_counts = {seq: 0 for seq in valid_sequences}
@@ -219,10 +223,6 @@ p_ours = {seq: count / total for seq, count in our_counts.items()}
 
 # KL divergence to ground truth
 def kl_div(p, q, epsilon=1e-12):
-    """
-    Computes KL(p || q) where p and q are dicts representing probability distributions.
-    Adds epsilon smoothing to avoid division by zero or log(0).
-    """
     all_keys = set(p.keys()).union(q.keys())
     total = 0.0
     for x in all_keys:
@@ -233,8 +233,13 @@ def kl_div(p, q, epsilon=1e-12):
         px = max(px, epsilon)
         qx = max(qx, epsilon)
 
-        total += px * np.log(px / qx)
+        contrib = px * np.log(px / qx)
+        if contrib < 0:
+            print(f"Negative contrib at '{x}': px={px:.5f}, qx={qx:.5f}, log(px/qx)={np.log(px/qx):.5f}")
+
+        total += contrib
     return total
+
 
 kl_syncode = kl_div(px_given_alpha, p_syncode)
 kl_ours = kl_div(px_given_alpha, p_ours)
