@@ -99,8 +99,8 @@ def f(s_onehot, stack_idxs, rem):
 with open("gadprompts.txt", 'r') as file:
     valid_sequences = [line.strip() for line in file if line.strip()]
 
-#the below approached failed due to not loading the model correctly: todo instead of a notebook have a py script to run on VM
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
+#the below approached failed due to OOM when loading the model
+"""tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
 model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-4B")
 model.eval()
 
@@ -119,9 +119,9 @@ for seq in valid_sequences:
 # compute normalized constrained distribution P(x|α)
 seq_probs = {seq: np.exp(lp) for seq, lp in log_probs.items()}
 Z = sum(seq_probs.values())
-px_given_alpha = {seq: p / Z for seq, p in seq_probs.items()}
+px_given_alpha = {seq: p / Z for seq, p in seq_probs.items()}"""
 
-"""sequence_logps = {}  # raw log-prob of each sequence
+sequence_logps = {}  # raw log-prob of each sequence
 for seq_id, group in df.groupby("sequence_id"):
     tokens = []
     logp = 0.0
@@ -141,7 +141,7 @@ sequence_probs = {seq: np.exp(lp) for seq, lp in sequence_logps.items()}
 
 # normalize to get P(x | alpha)
 Z = sum(sequence_probs.values())
-px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}"""
+px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}
 
 # generate samples using Syncode
 with open("grammars/gad.lark", 'r') as file:
@@ -218,8 +218,23 @@ total = sum(our_counts.values())
 p_ours = {seq: count / total for seq, count in our_counts.items()}
 
 # KL divergence to ground truth
-def kl_div(p, q):
-    return sum(p[x] * np.log(p[x] / q[x]) for x in p if p[x] > 0 and q[x] > 0)
+def kl_div(p, q, epsilon=1e-12):
+    """
+    Computes KL(p || q) where p and q are dicts representing probability distributions.
+    Adds epsilon smoothing to avoid division by zero or log(0).
+    """
+    all_keys = set(p.keys()).union(q.keys())
+    total = 0.0
+    for x in all_keys:
+        px = p.get(x, 0.0)
+        qx = q.get(x, 0.0)
+
+        # Add epsilon smoothing
+        px = max(px, epsilon)
+        qx = max(qx, epsilon)
+
+        total += px * np.log(px / qx)
+    return total
 
 kl_syncode = kl_div(px_given_alpha, p_syncode)
 kl_ours = kl_div(px_given_alpha, p_ours)
