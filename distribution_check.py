@@ -8,19 +8,20 @@ from syncode import Syncode
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
 
-
 df["sequence_id"] = (df.index // 5).astype(int)
 
-#parser-state dimension
+# parser-state dimension
 P_state = len(df["parser_state_onehot"].iloc[0])
 
-#prepare stack_onehot
+# prepare stack_onehot
 sample_stack = df["stack"].iloc[0]
 if all(isinstance(e, str) for e in sample_stack):
     # map state names to indices
-    unique_states = sorted({ name for lst in df["stack"] for name in lst })
-    state2idx = { name:i for i,name in enumerate(unique_states) }
-    P_stack   = len(unique_states)
+    unique_states = sorted({name for lst in df["stack"] for name in lst})
+    state2idx = {name: i for i, name in enumerate(unique_states)}
+    P_stack = len(unique_states)
+
+
     def stack_onehot(names):
         oh = np.zeros(P_stack, dtype=float)
         for nm in names:
@@ -28,6 +29,7 @@ if all(isinstance(e, str) for e in sample_stack):
         return oh
 else:
     raise ValueError(f"wrong stack format: {type(sample_stack)}")
+
 
 def next_id_or_argmax(row_df):
     val = row_df["next_token"]
@@ -86,22 +88,24 @@ model = LinearRegression()
 model.fit(X, y)
 w = model.coef_
 w_state = w[:P_state]
-w_stack = w[P_state:P_state+P_stack]
-w_rem   = w[-1]
-w_K     = model.intercept_
+w_stack = w[P_state:P_state + P_stack]
+w_rem = w[-1]
+w_K = model.intercept_
+
 
 def f(s_onehot, stack_idxs, rem):
     v_state = np.asarray(s_onehot, dtype=float).dot(w_state)
     v_stack = stack_onehot(stack_idxs).dot(w_stack)
-    v_rem   = w_rem * len(rem)
+    v_rem = w_rem * len(rem)
     return float(v_state + v_stack + v_rem + w_K)
+
 
 with open("gadprompts.txt", 'r') as file:
     valid_sequences = [line.strip() for line in file if line.strip()]
 
-#the below approached failed due to OOM when loading the model
-"""tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
-model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-4B")
+# the below approached failed due to OOM when loading the model
+model = AutoModelForCausalLM.from_pretrained(model_name="Qwen/Qwen3-4B", device_map="auto",
+                                             torch_dtype=getattr(torch, "float16"))
 model.eval()
 
 # compute P(x) for each valid sequence using original LLM
@@ -119,9 +123,9 @@ for seq in valid_sequences:
 # compute normalized constrained distribution P(x|α)
 seq_probs = {seq: np.exp(lp) for seq, lp in log_probs.items()}
 Z = sum(seq_probs.values())
-px_given_alpha = {seq: p / Z for seq, p in seq_probs.items()}"""
+px_given_alpha = {seq: p / Z for seq, p in seq_probs.items()}
 
-sequence_logps = {}  # raw log-prob of each sequence
+"""sequence_logps = {}  # raw log-prob of each sequence
 for seq_id, group in df.groupby("sequence_id"):
     tokens = []
     logp = 0.0
@@ -141,18 +145,18 @@ sequence_probs = {seq: np.exp(lp) for seq, lp in sequence_logps.items()}
 
 # normalize to get P(x | alpha)
 Z = sum(sequence_probs.values())
-px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}
+px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}"""
 
 # generate samples using Syncode
 with open("grammars/gad.lark", 'r') as file:
     grammar_text = file.read()
 
-syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True)
+syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True, tokenizer=tokenizer)
 syncode_counts = {seq: 0 for seq in valid_sequences}
 num_samples = 1000
 
 for _ in range(num_samples):
-    out = syncode.infer(prompt="Generate a random sequence:")
+    out = syncode.infer(prompt="Generate a random sequence:")  # 00000
     output = out[0].strip()
     if output in syncode_counts:
         syncode_counts[output] += 1
@@ -162,6 +166,7 @@ p_syncode = {seq: count / num_samples for seq, count in syncode_counts.items()}
 print("p_syncode:")
 for seq, prob in p_syncode.items():
     print(f"{seq}: {prob:.6f}")
+
 
 # generate samples from our model?
 def sample_from_ours(df, f, tokenizer, num_samples=1000):
@@ -194,8 +199,8 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
         # Continue sampling the rest of the string
         for step in range(4):  # already sampled 1
             matching_rows = df[df["prefix_text"] == generated]
-            if matching_rows.empty:#incorrect generation
-                break # for example probs for the prefix "0" can be [0.64, 0.36] for 0 and 1 respectively and we can choose 1 as the next token here which gives an incorrect generation for random sampling np.random.choice(["0", "1"], p=p)
+            if matching_rows.empty:  # incorrect generation
+                break  # for example probs for the prefix "0" can be [0.64, 0.36] for 0 and 1 respectively and we can choose 1 as the next token here which gives an incorrect generation for random sampling np.random.choice(["0", "1"], p=p)
 
             row = matching_rows.iloc[0]
             logits = np.array(row["syncode_logprobs"])
@@ -220,6 +225,7 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
 our_counts = sample_from_ours(df, f, tokenizer, num_samples=1000)
 total = sum(our_counts.values())
 p_ours = {seq: count / total for seq, count in our_counts.items()}
+
 
 # KL divergence to ground truth
 def kl_div(p, q, epsilon=1e-12):
@@ -250,7 +256,6 @@ def kl_div(p, q, epsilon=1e-12):
         total += px * np.log(px / qx)
 
     return total
-
 
 
 kl_syncode = kl_div(px_given_alpha, p_syncode)
