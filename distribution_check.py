@@ -144,7 +144,7 @@ sequence_probs = {seq: np.exp(lp) for seq, lp in sequence_logps.items()}
 Z = sum(sequence_probs.values())
 px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}
 
-# 5. Generate samples using Syncode
+# generate samples using Syncode
 with open("grammars/gad.lark", 'r') as file:
     grammar_text = file.read()
 
@@ -153,21 +153,19 @@ syncode_counts = {seq: 0 for seq in valid_sequences}
 num_samples = 1000
 
 for _ in range(num_samples):
-    out = syncode.infer(prompt="Generate a random sequence:")  # assumes grammar allows generation from empty prompt?
+    out = syncode.infer(prompt="Generate a random sequence:")
     output = out[0].strip()
     if output in syncode_counts:
         syncode_counts[output] += 1
 
 p_syncode = {seq: count / num_samples for seq, count in syncode_counts.items()}
 
-# 6. Generate samples from your model
-
-
+# generate samples from our model?
 def sample_from_ours(df, f, tokenizer, num_samples=1000):
     our_counts = {seq: 0 for seq in valid_sequences}
 
     for _ in range(num_samples):
-        # Step 1: start with empty prefix → get valid next token
+
         row0 = df[df["prefix_text"] == "0"].iloc[0]
         row1 = df[df["prefix_text"] == "1"].iloc[0]
 
@@ -188,13 +186,13 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
         p = np.array([p0, p1])
         p = p / p.sum()
 
-        generated = np.random.choice(["0", "1"], p=p)
+        generated = [np.argmax(p)]
 
         # Continue sampling the rest of the string
         for step in range(4):  # already sampled 1
             matching_rows = df[df["prefix_text"] == generated]
-            if matching_rows.empty:
-                break
+            if matching_rows.empty:#incorrect generation
+                break # for example probs for the prefix "0" can be [0.64, 0.36] for 0 and 1 respectively and we can choose 1 as the next token here which gives an incorrect generation
 
             row = matching_rows.iloc[0]
             logits = np.array(row["syncode_logprobs"])
@@ -220,7 +218,7 @@ our_counts = sample_from_ours(df, f, tokenizer, num_samples=1000)
 total = sum(our_counts.values())
 p_ours = {seq: count / total for seq, count in our_counts.items()}
 
-# 7. KL divergence to ground truth
+# KL divergence to ground truth
 def kl_div(p, q):
     return sum(p[x] * np.log(p[x] / q[x]) for x in p if p[x] > 0 and q[x] > 0)
 
