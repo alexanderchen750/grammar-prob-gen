@@ -112,10 +112,11 @@ model.eval()
 log_probs = {}
 for seq in valid_sequences:
     inputs = tokenizer(seq, return_tensors="pt")
+    inputs = {k: v.to(model.device) for k, v in inputs.items()}
     with torch.no_grad():
         outputs = model(**inputs)
         logits = outputs.logits[:, :-1, :]
-        labels = inputs.input_ids[:, 1:]
+        labels = inputs["input_ids"][:, 1:]
         log_softmax = torch.nn.functional.log_softmax(logits, dim=-1)
         token_log_probs = torch.gather(log_softmax, 2, labels.unsqueeze(-1)).squeeze(-1)
         log_probs[seq] = token_log_probs.sum().item()  # log P(x)
