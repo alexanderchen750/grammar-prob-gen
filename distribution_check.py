@@ -4,9 +4,14 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from syncode import Syncode
+import matplotlib.pyplot as plt
+import os
+
+os.makedirs("plots", exist_ok=True)
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
+prompt = "Generate a random sequence:"
 
 df["sequence_id"] = (df.index // 5).astype(int)
 
@@ -108,53 +113,45 @@ model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-4B", device_map="auto",
                                              torch_dtype=getattr(torch, "float16"))
 model.eval()
 
-# compute P(x) for each valid sequence using original LLM
-log_probs = {}
-for seq in valid_sequences:
-    inputs = tokenizer(seq, return_tensors="pt")
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
-    with torch.no_grad():
-        outputs = model(**inputs)
-        logits = outputs.logits[:, :-1, :]
-        labels = inputs["input_ids"][:, 1:]
-        log_softmax = torch.nn.functional.log_softmax(logits, dim=-1)
-        token_log_probs = torch.gather(log_softmax, 2, labels.unsqueeze(-1)).squeeze(-1)
-        log_probs[seq] = token_log_probs.sum().item()  # log P(x)
+input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
 
-# compute normalized constrained distribution P(x|α)
-seq_probs = {seq: np.exp(lp) for seq, lp in log_probs.items()}
-Z = sum(seq_probs.values())
-px_given_alpha = {seq: p / Z for seq, p in seq_probs.items()}
+# generate sequences from the LLM
+num_samples = 1000
+outputs = model.generate(
+    input_ids=input_ids.repeat(num_samples, 1),
+    max_new_tokens=5,
+    do_sample=True,
+    top_p=0.95,
+    temperature=1.0,
+    pad_token_id=tokenizer.eos_token_id
+)
 
-print("\nRaw log_probs (LLM):")
-for seq in valid_sequences:
-    print(f"{seq}: {log_probs.get(seq, 'N/A'):.4f}")
+llm_counts = {}
+for seq_tensor in outputs:
+    text = tokenizer.decode(seq_tensor, skip_special_tokens=True)
+    sequence = text.replace(prompt, "").strip()
+    key = sequence if sequence in valid_sequences else f"[INVALID] {sequence}"
+    llm_counts[key] = llm_counts.get(key, 0) + 1
 
-print("\nNormalized LLM distribution (px_given_alpha):")
-for seq, prob in sorted(px_given_alpha.items()):
+
+total = sum(llm_counts.values())
+p_llm = {seq: count / total for seq, count in llm_counts.items()}
+
+# separate valid and invalid distributions
+p_llm_valid = {seq: p for seq, p in p_llm.items() if not seq.startswith("[INVALID]")}
+p_llm_invalid = {seq: p for seq, p in p_llm.items() if seq.startswith("[INVALID]")}
+
+
+print("\nNormalized LLM distribution (including invalids):")
+for seq, prob in sorted(p_llm.items()):
     print(f"{seq}: {prob:.6f}")
 
-"""sequence_logps = {}  # raw log-prob of each sequence
-for seq_id, group in df.groupby("sequence_id"):
-    tokens = []
-    logp = 0.0
-    for i, row in group.iterrows():
-        token_id = int(row["next_token_id"])
-        token_logp = row["baseline_logprobs"][token_id]
-        logp += token_logp
-        if i % 5 == 0:
-            tokens.append(row["prefix_text"])
-        if row["next_token"]:
-            tokens.append(str(row["next_token"]))
-    seq = "".join(tokens)
-    sequence_logps[seq] = logp
+Z_valid = sum(p_llm_valid.values())
+px_given_alpha = {seq: prob / Z_valid for seq, prob in p_llm_valid.items()}
 
-# convert to probs
-sequence_probs = {seq: np.exp(lp) for seq, lp in sequence_logps.items()}
-
-# normalize to get P(x | alpha)
-Z = sum(sequence_probs.values())
-px_given_alpha = {seq: p / Z for seq, p in sequence_probs.items()}"""
+print("\n[Sampled] px_given_alpha from LLM generations:")
+for seq in sorted(valid_sequences):
+    print(f"{seq}: {px_given_alpha.get(seq, 0.0):.6f}")
 
 # generate samples using Syncode
 with open("grammars/gad.lark", 'r') as file:
@@ -162,15 +159,21 @@ with open("grammars/gad.lark", 'r') as file:
 
 syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True)
 syncode_counts = {seq: 0 for seq in valid_sequences}
+syncode_invalid_counts = {}
 num_samples = 1000
 
 for _ in range(num_samples):
-    out = syncode.infer(prompt="Generate a random sequence:")  # 00000
+    out = syncode.infer(prompt=prompt)
     output = out[0].strip()
-    if output in syncode_counts:
-        syncode_counts[output] += 1
+    key = output if output in valid_sequences else f"[INVALID] {output}"
+    syncode_counts[key] = syncode_counts.get(key, 0) + 1
 
-p_syncode = {seq: count / num_samples for seq, count in syncode_counts.items()}
+total_syncode = sum(syncode_counts.values())
+p_syncode_all = {seq: count / total_syncode for seq, count in syncode_counts.items()}
+
+# separate valid and invalid
+p_syncode = {seq: prob for seq, prob in p_syncode_all.items() if not seq.startswith("[INVALID]")}
+p_syncode_invalid = {seq: prob for seq, prob in p_syncode_all.items() if seq.startswith("[INVALID]")}
 
 print("\nSyncode raw counts:")
 for seq in valid_sequences:
@@ -184,10 +187,9 @@ for seq, prob in sorted(p_syncode.items()):
 
 # generate samples from our model?
 def sample_from_ours(df, f, tokenizer, num_samples=1000):
-    our_counts = {seq: 0 for seq in valid_sequences}
+    counts = {}
 
     for _ in range(num_samples):
-
         row0 = df[df["prefix_text"] == "0"].iloc[0]
         row1 = df[df["prefix_text"] == "1"].iloc[0]
 
@@ -202,7 +204,6 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
         probs = np.exp(probs - np.max(probs, axis=1, keepdims=True))
         probs = probs / probs.sum(axis=1, keepdims=True)
 
-        # 0 or 1 prefix
         p0 = probs[0][tokenizer.encode("0", add_special_tokens=False)[0]]
         p1 = probs[1][tokenizer.encode("1", add_special_tokens=False)[0]]
         p = np.array([p0, p1])
@@ -210,11 +211,10 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
 
         generated = np.random.choice(["0", "1"], p=p)
 
-        # Continue sampling the rest of the string
-        for step in range(4):  # already sampled 1
+        for step in range(4):
             matching_rows = df[df["prefix_text"] == generated]
-            if matching_rows.empty:  # incorrect generation
-                break  # for example probs for the prefix "0" can be [0.64, 0.36] for 0 and 1 respectively and we can choose 1 as the next token here which gives an incorrect generation for random sampling np.random.choice(["0", "1"], p=p)
+            if matching_rows.empty:
+                break
 
             row = matching_rows.iloc[0]
             logits = np.array(row["syncode_logprobs"])
@@ -230,15 +230,21 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
 
             generated += next_token
 
-        if generated in our_counts:
-            our_counts[generated] += 1
+        key = generated if generated in valid_sequences else f"[INVALID] {generated}"
+        counts[key] = counts.get(key, 0) + 1
 
-    return our_counts
+    return counts
+
 
 
 our_counts = sample_from_ours(df, f, tokenizer, num_samples=1000)
 total = sum(our_counts.values())
-p_ours = {seq: count / total for seq, count in our_counts.items()}
+p_ours_all = {seq: count / total for seq, count in our_counts.items()}
+
+# Separate valid/invalid
+p_ours = {seq: prob for seq, prob in p_ours_all.items() if not seq.startswith("[INVALID]")}
+p_ours_invalid = {seq: prob for seq, prob in p_ours_all.items() if seq.startswith("[INVALID]")}
+
 
 
 print("\nOurs raw counts:")
@@ -288,3 +294,43 @@ kl_syncode_ours = kl_div(p_syncode, p_ours)
 print(f"KL(Syncode || ground-truth): {kl_syncode:.4f}")
 print(f"KL(Ours   || ground-truth): {kl_ours:.4f}")
 print(f"KL(Ours   || syncode): {kl_syncode_ours:.4f}")
+
+sorted_seqs = sorted(px_given_alpha.keys())
+x = np.arange(len(sorted_seqs))
+
+def plot_distribution(probs, method_name, filename):
+    plt.figure(figsize=(15, 5))
+    plt.bar(x, [probs.get(seq, 0.0) for seq in sorted_seqs], width=0.6)
+    plt.xticks(x, sorted_seqs, rotation=90)
+    plt.xlabel("Sequences")
+    plt.ylabel("Probability")
+    plt.title(f"{method_name} Distribution over Accepted Sequences")
+    plt.tight_layout()
+    plt.savefig(f"plots/{filename}")
+    plt.close()
+
+
+plot_distribution(px_given_alpha, "LLM", "llm_distribution.png")
+plot_distribution(p_syncode, "SynCode", "syncode_distribution.png")
+plot_distribution(p_ours, "Ours", "ours_distribution.png")
+
+invalid_keys = sorted(
+    set(p_llm_invalid.keys()) | set(p_syncode_invalid.keys()) | set(p_ours_invalid.keys())
+)
+x_invalid = np.arange(len(invalid_keys))
+
+def plot_invalid_distribution(probs, method_name, filename):
+    plt.figure(figsize=(15, 5))
+    plt.bar(x_invalid, [probs.get(seq, 0.0) for seq in invalid_keys], width=0.6)
+    plt.xticks(x_invalid, invalid_keys, rotation=90)
+    plt.xlabel("Invalid Sequences")
+    plt.ylabel("Probability")
+    plt.title(f"{method_name} Distribution over Invalid Sequences")
+    plt.tight_layout()
+    plt.savefig(f"plots/{filename}")
+    plt.close()
+
+
+plot_invalid_distribution(p_llm_invalid, "LLM", "llm_invalid_distribution.png")
+plot_invalid_distribution(p_syncode_invalid, "SynCode", "syncode_invalid_distribution.png")
+plot_invalid_distribution(p_ours_invalid, "Ours", "ours_invalid_distribution.png")
