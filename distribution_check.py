@@ -126,6 +126,14 @@ seq_probs = {seq: np.exp(lp) for seq, lp in log_probs.items()}
 Z = sum(seq_probs.values())
 px_given_alpha = {seq: p / Z for seq, p in seq_probs.items()}
 
+print("\nRaw log_probs (LLM):")
+for seq in valid_sequences:
+    print(f"{seq}: {log_probs.get(seq, 'N/A'):.4f}")
+
+print("\nNormalized LLM distribution (px_given_alpha):")
+for seq, prob in sorted(px_given_alpha.items()):
+    print(f"{seq}: {prob:.6f}")
+
 """sequence_logps = {}  # raw log-prob of each sequence
 for seq_id, group in df.groupby("sequence_id"):
     tokens = []
@@ -164,8 +172,13 @@ for _ in range(num_samples):
 
 p_syncode = {seq: count / num_samples for seq, count in syncode_counts.items()}
 
+print("\nSyncode raw counts:")
+for seq in valid_sequences:
+    print(f"{seq}: {syncode_counts[seq]}")
+
+
 print("p_syncode:")
-for seq, prob in p_syncode.items():
+for seq, prob in sorted(p_syncode.items()):
     print(f"{seq}: {prob:.6f}")
 
 
@@ -226,6 +239,15 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
 our_counts = sample_from_ours(df, f, tokenizer, num_samples=1000)
 total = sum(our_counts.values())
 p_ours = {seq: count / total for seq, count in our_counts.items()}
+
+
+print("\nOurs raw counts:")
+for seq in valid_sequences:
+    print(f"{seq}: {our_counts[seq]}")
+
+print("\nNormalized Our distribution):")
+for seq, prob in sorted(p_ours.items()):
+    print(f"{seq}: {prob:.6f}")
 
 
 # KL divergence to ground truth
