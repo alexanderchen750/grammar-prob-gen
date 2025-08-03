@@ -295,7 +295,7 @@ print(f"KL(Syncode || ground-truth): {kl_syncode:.4f}")
 print(f"KL(Ours   || ground-truth): {kl_ours:.4f}")
 print(f"KL(Ours   || syncode): {kl_syncode_ours:.4f}")
 
-sorted_seqs = sorted(px_given_alpha.keys())
+sorted_seqs = sorted(valid_sequences)
 x = np.arange(len(sorted_seqs))
 
 def plot_distribution(probs, method_name, filename):
