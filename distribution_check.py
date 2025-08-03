@@ -291,9 +291,9 @@ kl_syncode = kl_div(px_given_alpha, p_syncode)
 kl_ours = kl_div(px_given_alpha, p_ours)
 kl_syncode_ours = kl_div(p_syncode, p_ours)
 
-print(f"KL(Syncode || ground-truth): {kl_syncode:.4f}")
-print(f"KL(Ours   || ground-truth): {kl_ours:.4f}")
-print(f"KL(Ours   || syncode): {kl_syncode_ours:.4f}")
+print(f"KL(GT||Syncode): {kl_syncode:.4f}")
+print(f"KL(GT||Ours): {kl_ours:.4f}")
+print(f"KL(Syncode||Ours): {kl_syncode_ours:.4f}")
 
 sorted_seqs = sorted(valid_sequences)
 x = np.arange(len(sorted_seqs))
