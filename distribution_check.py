@@ -11,7 +11,7 @@ os.makedirs("plots", exist_ok=True)
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
-prompt = "Generate a random sequence of 5 binary digits (0 or 1):"
+prompt = "Generate a sequence of 5 binary digits, provide just the result:"
 
 df["sequence_id"] = (df.index // 5).astype(int)
 
