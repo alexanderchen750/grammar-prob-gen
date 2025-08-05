@@ -6,6 +6,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from syncode import Syncode
 import matplotlib.pyplot as plt
 import os
+import re
 
 os.makedirs("plots", exist_ok=True)
 
@@ -119,7 +120,7 @@ input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
 num_samples = 1000
 outputs = model.generate(
     input_ids=input_ids.repeat(num_samples, 1),
-    max_new_tokens=5,
+    max_new_tokens=20,
     do_sample=True,
     top_p=0.95,
     temperature=1.0,
@@ -129,9 +130,10 @@ outputs = model.generate(
 llm_counts = {}
 for seq_tensor in outputs:
     text = tokenizer.decode(seq_tensor, skip_special_tokens=True)
-    sequence = text.replace(prompt, "").strip()
-    key = sequence if sequence in valid_sequences else f"[INVALID] {sequence}"
-    llm_counts[key] = llm_counts.get(key, 0) + 1
+    raw_response = text.replace(prompt, "").strip()
+    match = re.search(r"\b[01]{5}\b", raw_response)
+    sequence = match.group(0) if match else f"[INVALID] {raw_response}"
+    llm_counts[sequence] = llm_counts.get(sequence, 0) + 1
 
 
 total = sum(llm_counts.values())
