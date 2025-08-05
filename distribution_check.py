@@ -7,6 +7,7 @@ from syncode import Syncode
 import matplotlib.pyplot as plt
 import os
 import re
+import json
 
 os.makedirs("plots", exist_ok=True)
 
@@ -337,3 +338,21 @@ def plot_invalid_distribution(probs, method_name, filename):
 plot_invalid_distribution(p_llm_invalid, "LLM", "llm_invalid_distribution.png")
 plot_invalid_distribution(p_syncode_invalid, "SynCode", "syncode_invalid_distribution.png")
 plot_invalid_distribution(p_ours_invalid, "Ours", "ours_invalid_distribution.png")
+
+output_data = {
+    "valid": {
+        "px_given_alpha": px_given_alpha,
+        "p_syncode": p_syncode,
+        "p_ours": p_ours
+    },
+    "invalid": {
+        "p_llm_invalid": p_llm_invalid,
+        "p_syncode_invalid": p_syncode_invalid,
+        "p_ours_invalid": p_ours_invalid
+    }
+}
+
+os.makedirs("results", exist_ok=True)
+output_path = "results/distribution_data.json"
+with open(output_path, "w") as f:
+    json.dump(output_data, f, indent=2)
