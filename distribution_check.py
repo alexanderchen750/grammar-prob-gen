@@ -252,7 +252,7 @@ p_ours_invalid = {seq: prob for seq, prob in p_ours_all.items() if seq.startswit
 
 print("\nOurs raw counts:")
 for seq in valid_sequences:
-    print(f"{seq}: {our_counts[seq]}")
+    print(f"{seq}: {our_counts.get(seq, 0)}")
 
 print("\nNormalized Our distribution):")
 for seq, prob in sorted(p_ours.items()):
