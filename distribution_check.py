@@ -136,10 +136,16 @@ llm_counts = {}
 for seq_tensor in outputs:
     text = tokenizer.decode(seq_tensor, skip_special_tokens=True)
     raw_response = text.replace(prompt, "").strip()
-    raw_response = re.sub(r"\s+", " ", raw_response)  # replace all whitespace incl. \n and \t with space
+    raw_response = re.sub(r"\s+", " ", raw_response)
+
     match = re.search(r"\b[01]{5}\b", raw_response)
-    sequence = match.group(0) if match else f"[INVALID] {raw_response}"
-    llm_counts[sequence] = llm_counts.get(sequence, 0) + 1
+    if match:
+        candidate = match.group(0)
+        key = candidate if candidate in valid_sequences else f"[INVALID] {raw_response}"
+    else:
+        key = f"[INVALID] {raw_response}"
+
+    llm_counts[key] = llm_counts.get(key, 0) + 1
 
 total = sum(llm_counts.values())
 p_llm = {seq: count / total for seq, count in llm_counts.items()}
