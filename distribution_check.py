@@ -15,7 +15,7 @@ os.makedirs("plots", exist_ok=True)
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
-prompt = "Generate a sequence of 5 binary digits following the format: either exactly 00000, or a 1 followed by any 4 binary digits. Provide just the result:"
+prompt = "Generate a sequence of 5 binary digits, provide just the result:"
 
 df["sequence_id"] = (df.index // 5).astype(int)
 
