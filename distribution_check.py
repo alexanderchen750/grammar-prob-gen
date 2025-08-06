@@ -9,12 +9,12 @@ import os
 import re
 import json
 
-number_of_samples = 100000
+number_of_samples = 1000
 os.makedirs("plots", exist_ok=True)
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
-prompt = "Generate a sequence of 5 binary digits, provide just the result:"
+prompt = "Generate a sequence of 5 binary digits following the format: either exactly 00000, or a 1 followed by any 4 binary digits. Provide just the result:"
 
 df["sequence_id"] = (df.index // 5).astype(int)
 
@@ -138,14 +138,12 @@ for seq_tensor in outputs:
     sequence = match.group(0) if match else f"[INVALID] {raw_response}"
     llm_counts[sequence] = llm_counts.get(sequence, 0) + 1
 
-
 total = sum(llm_counts.values())
 p_llm = {seq: count / total for seq, count in llm_counts.items()}
 
 # separate valid and invalid distributions
 p_llm_valid = {seq: p for seq, p in p_llm.items() if not seq.startswith("[INVALID]")}
 p_llm_invalid = {seq: p for seq, p in p_llm.items() if seq.startswith("[INVALID]")}
-
 
 print("\nNormalized LLM distribution (including invalids):")
 for seq, prob in sorted(p_llm.items()):
@@ -166,7 +164,6 @@ syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only
 syncode_counts = {seq: 0 for seq in valid_sequences}
 syncode_invalid_counts = {}
 
-
 for _ in range(number_of_samples):
     out = syncode.infer(prompt=prompt)
     output = out[0].strip()
@@ -183,7 +180,6 @@ p_syncode_invalid = {seq: prob for seq, prob in p_syncode_all.items() if seq.sta
 print("\nSyncode raw counts:")
 for seq in valid_sequences:
     print(f"{seq}: {syncode_counts[seq]}")
-
 
 print("p_syncode:")
 for seq, prob in sorted(p_syncode.items()):
@@ -241,7 +237,6 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
     return counts
 
 
-
 our_counts = sample_from_ours(df, f, tokenizer, num_samples=number_of_samples)
 total = sum(our_counts.values())
 p_ours_all = {seq: count / total for seq, count in our_counts.items()}
@@ -249,8 +244,6 @@ p_ours_all = {seq: count / total for seq, count in our_counts.items()}
 # Separate valid/invalid
 p_ours = {seq: prob for seq, prob in p_ours_all.items() if not seq.startswith("[INVALID]")}
 p_ours_invalid = {seq: prob for seq, prob in p_ours_all.items() if seq.startswith("[INVALID]")}
-
-
 
 print("\nOurs raw counts:")
 for seq in valid_sequences:
@@ -303,6 +296,7 @@ print(f"KL(Syncode||Ours): {kl_syncode_ours:.4f}")
 sorted_seqs = sorted(valid_sequences)
 x = np.arange(len(sorted_seqs))
 
+
 def plot_distribution(probs, method_name, filename):
     plt.figure(figsize=(15, 5))
     plt.bar(x, [probs.get(seq, 0.0) for seq in sorted_seqs], width=0.6)
@@ -323,6 +317,7 @@ invalid_keys = sorted(
     set(p_llm_invalid.keys()) | set(p_syncode_invalid.keys()) | set(p_ours_invalid.keys())
 )
 x_invalid = np.arange(len(invalid_keys))
+
 
 def plot_invalid_distribution(probs, method_name, filename):
     plt.figure(figsize=(15, 6))  # slightly taller
