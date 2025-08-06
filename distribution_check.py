@@ -9,6 +9,7 @@ import os
 import re
 import json
 
+number_of_samples = 100000
 os.makedirs("plots", exist_ok=True)
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
@@ -118,9 +119,9 @@ model.eval()
 input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
 
 # generate sequences from the LLM
-num_samples = 1000
+
 outputs = model.generate(
-    input_ids=input_ids.repeat(num_samples, 1),
+    input_ids=input_ids.repeat(number_of_samples, 1),
     max_new_tokens=20,
     do_sample=True,
     top_p=0.95,
@@ -164,9 +165,9 @@ with open("grammars/gad.lark", 'r') as file:
 syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True)
 syncode_counts = {seq: 0 for seq in valid_sequences}
 syncode_invalid_counts = {}
-num_samples = 1000
 
-for _ in range(num_samples):
+
+for _ in range(number_of_samples):
     out = syncode.infer(prompt=prompt)
     output = out[0].strip()
     key = output if output in valid_sequences else f"[INVALID] {output}"
@@ -241,7 +242,7 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
 
 
 
-our_counts = sample_from_ours(df, f, tokenizer, num_samples=1000)
+our_counts = sample_from_ours(df, f, tokenizer, num_samples=number_of_samples)
 total = sum(our_counts.values())
 p_ours_all = {seq: count / total for seq, count in our_counts.items()}
 
@@ -349,6 +350,11 @@ output_data = {
         "p_llm_invalid": p_llm_invalid,
         "p_syncode_invalid": p_syncode_invalid,
         "p_ours_invalid": p_ours_invalid
+    },
+    "kl_divergences": {
+        "KL(GT||Syncode)": kl_syncode,
+        "KL(GT||Ours)": kl_ours,
+        "KL(Syncode||Ours)": kl_syncode_ours
     }
 }
 
