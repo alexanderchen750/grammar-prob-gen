@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import os
 import re
 import json
+import gc
 
 number_of_samples = 1000
 os.makedirs("plots", exist_ok=True)
@@ -119,6 +120,8 @@ model.eval()
 input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
 
 # generate sequences from the LLM
+gc.collect()
+torch.cuda.empty_cache()
 
 outputs = model.generate(
     input_ids=input_ids.repeat(number_of_samples, 1),
