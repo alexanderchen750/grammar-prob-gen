@@ -7,9 +7,9 @@ import numpy as np
 
 class DataCollectingGrammarGuidedLLM(GrammarGuidedLLM):
     """Extends GrammarGuidedLLM to collect probability data"""
-    
+
     def process_instance_with_probabilities(
-        self, 
+        self,
         text: str,
         model_manager,
         baseline_processor,
@@ -28,10 +28,10 @@ class DataCollectingGrammarGuidedLLM(GrammarGuidedLLM):
         # Get model predictions
         ids = model_manager.encode(text)
         logits = model_manager.forward(ids)
-        
+
         # Merge probability data with parser states
         training_data = []
-        
+
         for i, parser_result in enumerate(parser_results):
             if i < prompt_length:
                 continue
@@ -52,7 +52,7 @@ class DataCollectingGrammarGuidedLLM(GrammarGuidedLLM):
             syncode_logprobs = F.log_softmax(syncode_logits, dim=-1)
 
             data_point = {
-                'baseline_logprobs': baseline_logprobs.detach().cpu().numpy(), 
+                'baseline_logprobs': baseline_logprobs.detach().cpu().numpy(),
                 'syncode_logprobs': syncode_logprobs.detach().cpu().numpy(),
                 'parser_state_onehot': parser_result.get('onehot_current_state', []),
                 'parser_state': parser_result.get('current_state', []),
@@ -107,7 +107,7 @@ class DataCollectingGrammarGuidedLLM(GrammarGuidedLLM):
 
             # Get baseline and syncode logits for this position
             with torch.no_grad():
-                syncode_logits = syncode_processor.process(prev_ids, logits_i.unsqueeze(0))[0]
+                syncode_logits = syncode_processor._inner(prev_ids, logits_i.unsqueeze(0).clone())[0]
 
             syncode_logprobs = F.log_softmax(syncode_logits, dim=-1)
 
@@ -129,6 +129,6 @@ class DataCollectingGrammarGuidedLLM(GrammarGuidedLLM):
         return training_data
 
 
-    
+
 
 
