@@ -18,7 +18,7 @@ class GrammarGuidedLLM:
         self.parser_extractor = ParserStateExtractor(grammar_text)
         #self.parser_extractor.save_state_mapping("grammar_mapping.json")
         if tokenizer:
-            self.tokenizer = tokenizer
+            self.llm_tokenizer = tokenizer
         else:
             self.llm_tokenizer = LLMTokenizer(llm_tokenizer_name)
         self.stack_context_length = stack_context_length
