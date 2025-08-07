@@ -217,17 +217,26 @@ for seq, prob in sorted(p_syncode.items()):
 # generate samples from our model?
 def sample_from_ours(df, f, tokenizer, num_samples=1000):
     counts = {}
-    grammar_llm = DataCollectingGrammarGuidedLLM(
-        grammar_text=grammar_text,
-        tokenizer=tokenizer
-    )
+
+    # Create our grammar-guided LLM
+    grammar_llm = DataCollectingGrammarGuidedLLM(grammar_text=grammar_text, tokenizer=tokenizer)
+
     for _ in range(num_samples):
         sequence = ""
         grammar_llm.reset()
 
         for step in range(5):
-            # Feed current sequence and extract state
-            parser_info = grammar_llm.process_instance_syncode(sequence, syncode_proc, model.device, model)
+            # --- Avoid empty input ---
+            if sequence.strip() == "":
+                # Use a BOS token or any minimal prompt to avoid [1, 0] tensor
+                sequence_for_model = tokenizer.bos_token if tokenizer.bos_token else " "
+            else:
+                sequence_for_model = sequence
+
+            # --- Extract parser + syncode probs ---
+            parser_info = grammar_llm.process_instance_syncode(
+                sequence_for_model, syncode_proc, model.device, model
+            )
             if len(parser_info) == 0:
                 break
 
@@ -235,28 +244,25 @@ def sample_from_ours(df, f, tokenizer, num_samples=1000):
             s_onehot = parser_state.get("onehot_current_state", [])
             stack = parser_state.get("stack", [])
             remainder = parser_state.get("remainder", [])
-            syncode_logprobs = parser_state.get("syncode_logprobs", 0)
-            syncode_logprobs = np.array(syncode_logprobs)
+            syncode_lp = np.array(parser_state.get("syncode_logprobs", 0))
 
-            # Get base logits from model
-
+            # --- Apply shift ---
             shift = f(s_onehot, stack, remainder)
-            adjusted_prob = syncode_logprobs + shift
+            adjusted_lp = syncode_lp + shift
 
-            # Get probabilities
-            probs = np.exp(adjusted_prob - np.max(adjusted_prob))
+            # --- Turn into probs ---
+            probs = np.exp(adjusted_lp - np.max(adjusted_lp))
             probs = probs / probs.sum()
 
-            # Sample next token
+            # --- Sample next token ---
             next_token_id = np.random.choice(len(probs), p=probs)
             next_token = tokenizer.decode([next_token_id]).strip()
 
             sequence += next_token
 
-        # Save with validity check
+        # --- Store counts (valid + invalid) ---
         key = sequence if sequence in valid_sequences else f"[INVALID] {sequence}"
         counts[key] = counts.get(key, 0) + 1
-
 
     return counts
 
