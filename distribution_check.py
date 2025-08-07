@@ -108,6 +108,19 @@ w_rem = w[-1]
 w_K = model.intercept_
 
 
+coef_data = {
+    "w_state": w_state.tolist(),
+    "w_stack": w_stack.tolist(),
+    "w_rem": float(w_rem),
+    "w_K": float(w_K),
+    "state2idx": state2idx,  # needed to reconstruct stack_onehot
+    "P_state": P_state,
+    "P_stack": P_stack
+}
+os.makedirs("cache_lm_weights", exist_ok=True)
+with open("cache_lm_weights/linear_model_weights.json", "w") as f:
+    json.dump(coef_data, f, indent=2)
+
 def f(s_onehot, stack_idxs, rem):
     v_state = np.asarray(s_onehot, dtype=float).dot(w_state)
     v_stack = stack_onehot(stack_idxs).dot(w_stack)
