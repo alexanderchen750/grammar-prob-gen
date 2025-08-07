@@ -15,7 +15,7 @@ os.makedirs("plots", exist_ok=True)
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
-prompt = "Generate a sequence of 5 binary digits, provide just the result:"
+prompt = "Generate a sequence of 5 binary digits following the format: either exactly 00000, or a 1 followed by any 4 binary digits. Provide just the result:"
 
 df["sequence_id"] = (df.index // 5).astype(int)
 
@@ -119,32 +119,38 @@ model.eval()
 
 input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
 
-# generate sequences from the LLM
-
-
-outputs = model.generate(
-    input_ids=input_ids.repeat(number_of_samples, 1),
-    max_new_tokens=20,
-    do_sample=True,
-    top_p=0.95,
-    temperature=1.0,
-    pad_token_id=tokenizer.eos_token_id
-)
-
+batch_size = 100
+num_batches = (number_of_samples + batch_size - 1) // batch_size
 llm_counts = {}
-for seq_tensor in outputs:
-    text = tokenizer.decode(seq_tensor, skip_special_tokens=True)
-    raw_response = text.replace(prompt, "").strip()
-    raw_response = re.sub(r"\s+", " ", raw_response)
 
-    match = re.search(r"\b[01]{5}\b", raw_response)
-    if match:
-        candidate = match.group(0)
-        key = candidate if candidate in valid_sequences else f"[INVALID] {raw_response}"
-    else:
-        key = f"[INVALID] {raw_response}"
+for batch_idx in range(num_batches):
+    curr_batch_size = min(batch_size, number_of_samples - batch_idx * batch_size)
+    try:
+        outputs = model.generate(
+            input_ids=input_ids.repeat(curr_batch_size, 1),
+            max_new_tokens=20,
+            do_sample=True,
+            top_p=0.95,
+            temperature=1.0,
+            pad_token_id=tokenizer.eos_token_id
+        )
+    except Exception as e:
+        print(e)
+        outputs = {}
 
-    llm_counts[key] = llm_counts.get(key, 0) + 1
+    for seq_tensor in outputs:
+        text = tokenizer.decode(seq_tensor, skip_special_tokens=True)
+        raw_response = text.replace(prompt, "").strip()
+        raw_response = re.sub(r"\s+", " ", raw_response)
+
+        match = re.search(r"\b[01]{5}\b", raw_response)
+        if match:
+            candidate = match.group(0)
+            key = candidate if candidate in valid_sequences else f"[INVALID] {raw_response}"
+        else:
+            key = f"[INVALID] {raw_response}"
+
+        llm_counts[key] = llm_counts.get(key, 0) + 1
 
 total = sum(llm_counts.values())
 p_llm = {seq: count / total for seq, count in llm_counts.items()}
