@@ -334,13 +334,13 @@ x_invalid = np.arange(len(invalid_keys))
 
 
 def plot_invalid_distribution(probs, method_name, filename):
-    plt.figure(figsize=(15, 6))  # slightly taller
+    plt.figure(figsize=(15, 7), constrained_layout=True)
     plt.bar(x_invalid, [probs.get(seq, 0.0) for seq in invalid_keys], width=0.6)
     plt.xticks(x_invalid, invalid_keys, rotation=90, ha='left')  # better anchoring
     plt.xlabel("Invalid Sequences")
     plt.ylabel("Probability")
     plt.title(f"{method_name} Distribution over Invalid Sequences")
-    plt.tight_layout(rect=[0, 0.2, 1, 1])  # leave extra space at bottom
+
     plt.savefig(f"plots/{filename}")
     plt.close()
 
@@ -361,9 +361,9 @@ output_data = {
         "p_ours_invalid": p_ours_invalid
     },
     "kl_divergences": {
-        "KL(GT||Syncode)": kl_syncode,
-        "KL(GT||Ours)": kl_ours,
-        "KL(Syncode||Ours)": kl_syncode_ours
+        "KL(GT||Syncode)": f"{kl_syncode:.4f}",
+        "KL(GT||Ours)": f"{kl_ours:.4f}",
+        "KL(Syncode||Ours)": f"{kl_syncode_ours:.4f}"
     }
 }
 
