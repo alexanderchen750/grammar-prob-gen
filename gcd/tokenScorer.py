@@ -88,7 +88,7 @@ class DataCollectingGrammarGuidedLLM(GrammarGuidedLLM):
         parser_results = self.process_instance(text)
         print("Model forwarding...")
         # Get model predictions
-        ids = self.llm_tokenizer(text, return_tensors="pt").input_ids.to(device)
+        ids = self.llm_tokenizer(text, return_tensors="pt").input_ids.to(device).long()
         logits = model(ids).logits
 
         # Merge probability data with parser states
