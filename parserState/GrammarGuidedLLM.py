@@ -13,11 +13,14 @@ class GrammarGuidedLLM:
     in order to avoid partial tokens being processed incorrectly; even if full sentence is correct
     some lark lexing may lead to temporarily lexed tokens that become invalid when addtioanl tokens are added."""
     
-    def __init__(self, grammar_text, llm_tokenizer_name="Qwen/Qwen3-4B", stack_context_length=3, debug=False):
+    def __init__(self, grammar_text, llm_tokenizer_name="Qwen/Qwen3-4B", stack_context_length=3, debug=False, tokenizer=None):
         """Initialize with grammar and tokenizer settings."""
         self.parser_extractor = ParserStateExtractor(grammar_text)
         #self.parser_extractor.save_state_mapping("grammar_mapping.json")
-        self.llm_tokenizer = LLMTokenizer(llm_tokenizer_name)
+        if tokenizer:
+            self.tokenizer = tokenizer
+        else:
+            self.llm_tokenizer = LLMTokenizer(llm_tokenizer_name)
         self.stack_context_length = stack_context_length
         self.debug = debug
 

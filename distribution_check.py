@@ -4,18 +4,24 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from syncode import Syncode
+from syncode import SyncodeLogitsProcessor, Grammar
 import matplotlib.pyplot as plt
 import os
 import re
 import json
 import gc
 
+from parserState.GrammarGuidedLLM import GrammarGuidedLLM
+from gcd.tokenScorer import DataCollectingGrammarGuidedLLM
+
+
+
 number_of_samples = 1000
 os.makedirs("plots", exist_ok=True)
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
-prompt = "Generate a sequence of 5 binary digits following the format: either exactly 00000, or a 1 followed by any 4 binary digits. Provide just the result:"
+prompt = "Generate a sequence of 5 binary digits, provide just the result:"
 
 df["sequence_id"] = (df.index // 5).astype(int)
 
@@ -174,6 +180,14 @@ for seq in sorted(valid_sequences):
 with open("grammars/gad.lark", 'r') as file:
     grammar_text = file.read()
 
+
+
+syncode_proc = SyncodeLogitsProcessor(
+            grammar=Grammar(grammar_text),
+            tokenizer=tokenizer,
+            parse_output_only=True
+        )
+
 syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True)
 syncode_counts = {seq: 0 for seq in valid_sequences}
 syncode_invalid_counts = {}
@@ -203,50 +217,46 @@ for seq, prob in sorted(p_syncode.items()):
 # generate samples from our model?
 def sample_from_ours(df, f, tokenizer, num_samples=1000):
     counts = {}
-
+    grammar_llm = DataCollectingGrammarGuidedLLM(
+        grammar_text=grammar_text,
+        tokenizer=tokenizer
+    )
     for _ in range(num_samples):
-        row0 = df[df["prefix_text"] == "0"].iloc[0]
-        row1 = df[df["prefix_text"] == "1"].iloc[0]
+        sequence = ""
+        grammar_llm.reset()
 
-        probs = []
-        for row in [row0, row1]:
-            shift = f(row["parser_state_onehot"], row["stack"], row["remainder"])
-            logits = np.array(row["syncode_logprobs"])
-            adjusted = logits + shift
-            probs.append(adjusted)
-
-        probs = np.vstack(probs)  # shape (2, V)
-        probs = np.exp(probs - np.max(probs, axis=1, keepdims=True))
-        probs = probs / probs.sum(axis=1, keepdims=True)
-
-        p0 = probs[0][tokenizer.encode("0", add_special_tokens=False)[0]]
-        p1 = probs[1][tokenizer.encode("1", add_special_tokens=False)[0]]
-        p = np.array([p0, p1])
-        p = p / p.sum()
-
-        generated = np.random.choice(["0", "1"], p=p)
-
-        for step in range(4):
-            matching_rows = df[df["prefix_text"] == generated]
-            if matching_rows.empty:
+        for step in range(5):
+            # Feed current sequence and extract state
+            parser_info = grammar_llm.process_instance_syncode(sequence, syncode_proc, model.device, model)
+            if len(parser_info) == 0:
                 break
 
-            row = matching_rows.iloc[0]
-            logits = np.array(row["syncode_logprobs"])
-            shift = f(row["parser_state_onehot"], row["stack"], row["remainder"])
-            adjusted_logits = logits + shift
-            probs = np.exp(adjusted_logits - np.max(adjusted_logits))
+            parser_state = parser_info[-1]
+            s_onehot = parser_state.get("onehot_current_state", [])
+            stack = parser_state.get("stack", [])
+            remainder = parser_state.get("remainder", [])
+            syncode_logprobs = parser_state.get("syncode_logprobs", 0)
+            syncode_logprobs = np.array(syncode_logprobs)
+
+            # Get base logits from model
+
+            shift = f(s_onehot, stack, remainder)
+            adjusted_prob = syncode_logprobs + shift
+
+            # Get probabilities
+            probs = np.exp(adjusted_prob - np.max(adjusted_prob))
             probs = probs / probs.sum()
 
+            # Sample next token
             next_token_id = np.random.choice(len(probs), p=probs)
             next_token = tokenizer.decode([next_token_id]).strip()
-            if next_token not in ["0", "1"]:
-                break
 
-            generated += next_token
+            sequence += next_token
 
-        key = generated if generated in valid_sequences else f"[INVALID] {generated}"
+        # Save with validity check
+        key = sequence if sequence in valid_sequences else f"[INVALID] {sequence}"
         counts[key] = counts.get(key, 0) + 1
+
 
     return counts
 
