@@ -78,35 +78,36 @@ def sample_from_ours(
         valid_sequences: List[str],
         num_samples: int = 1000,
         max_steps: int = 5,
-):
+) -> Dict[str, int]:
     counts: Dict[str, int] = defaultdict(int)
+    prompt = "Generate a sequence of 5 binary digits, provide just the result:"
 
-    # BOS handling: warn if there is no BOS
-    if tokenizer.bos_token_id is None:
-        print("[WARNING]")
-        bos_text = "Generate a sequence of 5 binary digits, provide just the result:"
-    else:
-        bos_text = tokenizer.bos_token or tokenizer.decode([tokenizer.bos_token_id])
+    # Precompute banned token ids (all specials)
+    ban_ids = set(getattr(tokenizer, "all_special_ids", []) or [])
+    # Safety: never ban the actual "0"/"1" (or whatever grammar allows)
+    try:
+        tid0 = tokenizer.encode("0", add_special_tokens=False)[0]
+        tid1 = tokenizer.encode("1", add_special_tokens=False)[0]
+        print("tid0 and tid1", tid0, tid1, ban_ids)
+        ban_ids.discard(tid0)
+        ban_ids.discard(tid1)
+    except Exception:
+        pass
 
     for _ in range(num_samples):
-        # Start from BOS text only if it actually decodes to something (avoid extra spaces)
-        sequence = bos_text if bos_text else ""
+        sequence = prompt
         ggllm.reset()
 
         for _t in range(max_steps):
-            # Get parser info (with Syncode logits) for the current partial string
             info = ggllm.process_instance_with_syncode(
                 text=sequence,
                 model_manager=model_mgr,
                 syncode_processor=syncode_proc,
             )
             if not info:
-                # Could happen for weird partials; just stop this sample
                 break
 
             state = info[-1]
-
-            # Syncode logprobs may be numpy; convert to tensor
             syncode_logprobs = state["syncode_logprobs"]
             if isinstance(syncode_logprobs, (list, tuple, np.ndarray)):
                 syncode_logprobs = torch.tensor(syncode_logprobs, device=model.device)
@@ -114,25 +115,60 @@ def sample_from_ours(
                 syncode_logprobs = torch.as_tensor(syncode_logprobs, device=model.device)
             syncode_logprobs = syncode_logprobs.to(torch.float32)
 
-            # Compute our scalar shift f(...)
-            shift = float(
-                f_shift(
-                    state.get("onehot_current_state", []),
-                    state.get("stack", []),
-                    state.get("remainder", ""),
+            # Build valid mask from Syncode (-inf => invalid)
+            valid_mask = torch.isfinite(syncode_logprobs)
+
+            # Mask all special tokens, too
+            if ban_ids:
+                idx = torch.tensor(sorted(ban_ids), device=syncode_logprobs.device)
+                idx = idx[(idx >= 0) & (idx < syncode_logprobs.numel())]
+                if idx.numel() > 0:
+                    valid_mask[idx] = False
+
+            if not valid_mask.any():
+                print("Fallback if everything is invalid: try to allow 0/1 if available; else break")
+                try:
+                    tid0 = tokenizer.encode("0", add_special_tokens=False)[0]
+                    tid1 = tokenizer.encode("1", add_special_tokens=False)[0]
+                    probs = torch.zeros_like(syncode_logprobs)
+                    for t in (tid0, tid1):
+                        if 0 <= t < probs.numel():
+                            probs[t] = 0.5
+                    if probs.sum() == 0:
+                        break
+                except Exception:
+                    break
+            else:
+                # Apply large negative to invalids
+                logits = syncode_logprobs.clone()
+                logits[~valid_mask] = -1e30
+
+                # Scalar shift
+                shift_val = float(
+                    f_shift(
+                        state.get("onehot_current_state", []),
+                        state.get("stack", []),
+                        state.get("remainder", "")
+                    )
                 )
-            )
-            adjusted = syncode_logprobs + shift
+                logits = logits + shift_val
 
-            # Sample a token id
-            probs = F.softmax(adjusted, dim=-1)
+                probs = torch.softmax(logits, dim=-1)
+
             next_token_id = torch.multinomial(probs, num_samples=1).item()
+            # Decode a *single* token and append; .strip() to avoid space artifacts
+            next_tok = tokenizer.decode([next_token_id], skip_special_tokens=True).strip()
+            # If decode yields empty (e.g., purely-special), mark invalid and stop
+            if not next_tok:
+                sequence += ""  # no-op
+                break
 
-            # Decode and append (strip to avoid leading spaces creeping in)
-            next_tok = tokenizer.decode([next_token_id]).strip()
             sequence += next_tok
 
-        # Record validity
+        sequence = sequence.strip()
+        if sequence.startswith(prompt):
+            sequence = sequence[len(prompt):].strip()
+
         key = sequence if sequence in valid_sequences else f"[INVALID] {sequence}"
         counts[key] += 1
 
