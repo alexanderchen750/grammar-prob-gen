@@ -83,8 +83,8 @@ def sample_from_ours(
 
     # BOS handling: warn if there is no BOS
     if tokenizer.bos_token_id is None:
-        print("[WARNING] Tokenizer has no BOS token — starting from empty context.")
-        bos_text = ""
+        print("[WARNING]")
+        bos_text = "Generate a sequence of 5 binary digits, provide just the result:"
     else:
         bos_text = tokenizer.bos_token or tokenizer.decode([tokenizer.bos_token_id])
 
