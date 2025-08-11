@@ -99,7 +99,7 @@ def f_shift_scalar(s_onehot, stack_idxs, rem):
 # Our logits processor
 # ----------------------------
 
-from parserState import ParserStateExtractor
+from parserState.ParserStateExtractor import ParserStateExtractor
 
 class BatchSyncodeCallable:
     """
@@ -240,7 +240,19 @@ model.eval()
 # ----------------------------
 # Sampling via our logits processor
 # ----------------------------
-inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+tokenizer.pad_token = tokenizer.eos_token
+model.generation_config.pad_token_id = tokenizer.pad_token_id
+
+inputs = tokenizer(
+    prompt,
+    return_tensors="pt",
+    padding=True,            # makes attention_mask
+    truncation=False,
+).to(model.device)
+
+# if for some reason attention_mask is missing (older tokenizers), create it:
+if "attention_mask" not in inputs:
+    inputs["attention_mask"] = torch.ones_like(inputs["input_ids"])
 processors = LogitsProcessorList([processor])
 
 our_counts = {}
@@ -251,6 +263,7 @@ for batch_idx in range(num_batches):
     try:
         outputs = model.generate(
             input_ids=inputs["input_ids"].repeat(curr_batch_size, 1),
+            attention_mask=inputs["attention_mask"].repeat(curr_batch_size, 1),
             max_new_tokens=20,                 # generous, we'll parse out the 5 bits
             do_sample=True,
             top_p=0.95,
