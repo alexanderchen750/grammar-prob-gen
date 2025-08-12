@@ -12,12 +12,10 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, LogitsProcessor, L
 from gcd.processors import SyncodeProcessor
 from pathlib import Path
 
-
 number_of_samples = 1000
 batch_size = 100
 os.makedirs("plots", exist_ok=True)
 os.makedirs("results", exist_ok=True)
-
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
@@ -25,7 +23,6 @@ prompt = "Generate a sequence of 5 binary digits following the format: either ex
 
 with open("gadprompts.txt", 'r') as file:
     valid_sequences = [line.strip() for line in file if line.strip()]
-
 
 df["sequence_id"] = (df.index // 5).astype(int)
 
@@ -39,6 +36,7 @@ if all(isinstance(e, str) for e in sample_stack):
     state2idx = {name: i for i, name in enumerate(unique_states)}
     P_stack = len(unique_states)
 
+
     def stack_onehot(names):
         oh = np.zeros(P_stack, dtype=float)
         for nm in names:
@@ -46,6 +44,7 @@ if all(isinstance(e, str) for e in sample_stack):
         return oh
 else:
     raise ValueError(f"wrong stack format: {type(sample_stack)}")
+
 
 def next_id_or_argmax(row_df):
     val = row_df["next_token"]
@@ -56,8 +55,8 @@ def next_id_or_argmax(row_df):
         logprobs = np.array(row_df["syncode_logprobs"])
         return int(np.argmax(logprobs))
 
-df["next_token_id"] = df.apply(next_id_or_argmax, axis=1)
 
+df["next_token_id"] = df.apply(next_id_or_argmax, axis=1)
 
 X_rows, y_rows = [], []
 
@@ -89,11 +88,13 @@ w_stack = w[P_state:P_state + P_stack]
 w_rem = w[-1]
 w_K = lin.intercept_
 
+
 def f_shift_scalar(s_onehot, stack_idxs, rem):
     v_state = np.asarray(s_onehot, dtype=float).dot(w_state)
     v_stack = stack_onehot(stack_idxs).dot(w_stack)
     v_rem = w_rem * len(rem)
     return float(v_state + v_stack + v_rem + w_K)
+
 
 # ----------------------------
 # Our logits processor
@@ -101,11 +102,13 @@ def f_shift_scalar(s_onehot, stack_idxs, rem):
 
 from parserState.ParserStateExtractor import ParserStateExtractor
 
+
 class BatchSyncodeCallable:
     """
     Adapt per-row SyncodeProcessor.process(prev_ids, logits) -> logits
     to a batch callable: (input_ids, scores) -> scores
     """
+
     def __init__(self, syncode_processor):
         self.proc = syncode_processor
 
@@ -123,9 +126,9 @@ class BatchSyncodeCallable:
 
         outs = []
         for b in range(B):
-            prev_ids_b = input_ids[b:b+1].to(device=work_device, dtype=torch.long, non_blocking=True)  # (1, L)
+            prev_ids_b = input_ids[b:b + 1].to(device=work_device, dtype=torch.long, non_blocking=True)  # (1, L)
             # Many custom processors assume float32 logits
-            scores_b = scores[b:b+1].to(device=work_device, dtype=torch.float32, non_blocking=True)    # (1, V)
+            scores_b = scores[b:b + 1].to(device=work_device, dtype=torch.float32, non_blocking=True)  # (1, V)
 
             out_b = self.proc.process(prev_ids_b, scores_b)  # should return (1, V) float32
             # Be defensive about dtype/device coming back
@@ -138,42 +141,26 @@ class BatchSyncodeCallable:
         out = out.to(device=orig_device, dtype=orig_dtype, non_blocking=True)
         return out
 
-class SyncodeWithFProcessor(LogitsProcessor):
-    """
-    1) (Optionally) apply Syncode logits masking (callable you pass in).
-    2) For each non -inf token, clone a ParserStateExtractor positioned at the current prefix,
-       advance by that token, extract (state_onehot, stack, remainder),
-       evaluate f_shift, and add it to that token's logit.
-    """
 
-    def __init__(
-        self,
-        *,
-        grammar_text: str,
-        tokenizer,
-        parser_state_extractor_cls,
-        f_shift_fn,                            # callable(state_onehot, stack, remainder) -> float
-        syncode_proc=None,                     # optional: callable(input_ids, scores) -> scores
-        stack_context_length: int = 3,
-        decode_token_fn=None
-    ):
+class SyncodeWithFProcessor(LogitsProcessor):
+    def __init__(self, *, grammar_text, tokenizer, parser_state_extractor_cls, f_shift_fn,
+                 syncode_proc=None, stack_context_length=3, decode_token_fn=None):
         self.grammar_text = grammar_text
         self.tokenizer = tokenizer
         self.ParserStateExtractorCls = parser_state_extractor_cls
         self.f_shift_fn = f_shift_fn
-        self.syncode_proc = syncode_proc       # if None, no grammar masking
+        self.syncode_proc = syncode_proc
         self.stack_context_length = stack_context_length
         self.decode_token_fn = decode_token_fn or (lambda tid: tokenizer.decode([tid], skip_special_tokens=True))
 
     def _build_extractor_for_prefix(self, prefix_text: str):
         ex = self.ParserStateExtractorCls(self.grammar_text)
-        # position the extractor at the prefix
         ex.advance_parser(prefix_text, top_k=self.stack_context_length, prefix_text=prefix_text)
         return ex
 
     @torch.no_grad()
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor):
-        # 1) (optional) apply Syncode logits processor first
+        # Optionally apply Syncode first
         if self.syncode_proc is not None:
             scores = self.syncode_proc(input_ids, scores)
 
@@ -182,17 +169,17 @@ class SyncodeWithFProcessor(LogitsProcessor):
 
         for b in range(B):
             prefix_text = self.tokenizer.decode(input_ids[b], skip_special_tokens=True)
-            base_extractor = self._build_extractor_for_prefix(prefix_text)
-
+            print("prefix_text", prefix_text)
+            # collect valid token ids once
             valid_ids = torch.nonzero(~neginf_mask[b], as_tuple=False).flatten().tolist()
             if not valid_ids:
                 continue
 
+            # For each candidate, NEW extractor → prefix → advance by token (no deepcopy!)
             for tid in valid_ids:
                 tok_text = self.decode_token_fn(tid)
 
-                # clone + advance by single token
-                ex_next = copy.deepcopy(base_extractor)
+                ex_next = self._build_extractor_for_prefix(prefix_text)
                 res = ex_next.advance_parser(tok_text, top_k=self.stack_context_length,
                                              prefix_text=prefix_text + tok_text)
 
@@ -205,8 +192,8 @@ class SyncodeWithFProcessor(LogitsProcessor):
                     scores[b, tid] = scores[b, tid] + scores.new_tensor(delta)
 
         # Never revive disallowed tokens
-        scores = torch.where(neginf_mask, scores.new_full(scores.shape, float("-inf")), scores)
-        return scores
+        return torch.where(neginf_mask, scores.new_full(scores.shape, float("-inf")), scores)
+
 
 # ----------------------------
 # Build model and logits processor
@@ -246,7 +233,7 @@ model.generation_config.pad_token_id = tokenizer.pad_token_id
 inputs = tokenizer(
     prompt,
     return_tensors="pt",
-    padding=True,            # makes attention_mask
+    padding=True,  # makes attention_mask
     truncation=False,
 ).to(model.device)
 
@@ -264,7 +251,7 @@ for batch_idx in range(num_batches):
         outputs = model.generate(
             input_ids=inputs["input_ids"].repeat(curr_batch_size, 1),
             attention_mask=inputs["attention_mask"].repeat(curr_batch_size, 1),
-            max_new_tokens=20,                 # generous, we'll parse out the 5 bits
+            max_new_tokens=20,  # generous, we'll parse out the 5 bits
             do_sample=True,
             top_p=0.95,
             temperature=1.0,
@@ -308,6 +295,7 @@ for seq, prob in sorted(p_ours.items()):
 sorted_seqs = sorted(valid_sequences)
 x = np.arange(len(sorted_seqs))
 
+
 def plot_distribution(probs, method_name, filename):
     plt.figure(figsize=(15, 5))
     plt.bar(x, [probs.get(seq, 0.0) for seq in sorted_seqs], width=0.6)
@@ -319,11 +307,14 @@ def plot_distribution(probs, method_name, filename):
     plt.savefig(f"plots/{filename}")
     plt.close()
 
+
 plot_distribution(p_ours, "Ours (LogitsProcessor)", "ours_lp_distribution.png")
 
 invalid_keys = sorted(p_ours_invalid.keys())
 if invalid_keys:
     x_invalid = np.arange(len(invalid_keys))
+
+
     def plot_invalid_distribution(probs, method_name, filename):
         plt.figure(figsize=(15, 7), constrained_layout=True)
         plt.bar(x_invalid, [probs.get(seq, 0.0) for seq in invalid_keys], width=0.6)
@@ -333,6 +324,8 @@ if invalid_keys:
         plt.title(f"{method_name} Distribution over Invalid Sequences")
         plt.savefig(f"plots/{filename}")
         plt.close()
+
+
     plot_invalid_distribution(p_ours_invalid, "Ours (LogitsProcessor)", "ours_lp_invalid_distribution.png")
 
 # ----------------------------
