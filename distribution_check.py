@@ -2,22 +2,158 @@ import torch
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, LogitsProcessor, LogitsProcessorList
 from syncode import Syncode
 import matplotlib.pyplot as plt
 import os
 import re
 import json
 import gc
+from lark import Lark
+from gcd.processors import SyncodeProcessor, BatchSyncodeCallable, SyncodeWithFProcessor
+from pathlib import Path
+from parserState.ParserStateExtractor import ParserStateExtractor
 
-number_of_samples = 1000
+
+def check_validity_of_output(parser, output):
+    try:
+        parser.parse(output)
+        return True
+    except Exception as e:
+        return False
+
+
+with open("grammars/bv4.lark", 'r') as file:
+    grammar_text = file.read()
+
+parser = Lark(grammar_text, parser='lalr', lexer='contextual')
+
+number_of_samples = 100
 os.makedirs("plots", exist_ok=True)
 
 df = pd.read_pickle("training_data/grammar_data_df.pkl")
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
-prompt = "Generate a sequence of 5 binary digits following the format: either exactly 00000, or a 1 followed by any 4 binary digits. Provide just the result:"
 
-df["sequence_id"] = (df.index // 5).astype(int)
+syncode_processor = SyncodeProcessor(
+    grammar_path=Path("grammars/bv4.lark"),
+    tokenizer=tokenizer,
+    parse_output_only=True,
+)
+
+syncode_proc = BatchSyncodeCallable(syncode_processor)
+
+
+prompt = """You are an expert in program synthesis. You are tasked with solving a Syntax-Guided Synthesis (SyGuS) problem. Your goal is to output a function that should produce outputs that satisfy a series of constraints when given specific inputs.
+
+Question:
+(set-logic BV)
+
+(synth-fun inv ((s (BitVec 4)) (t (BitVec 4))) (BitVec 4)
+    ((Start (BitVec 4)))
+    ((Start (BitVec 4) (s t #x0 #x8 #x7 (bvneg Start) (bvnot Start) (bvadd Start Start) (bvsub Start Start) (bvand Start Start) (bvlshr Start Start) (bvor Start Start) (bvshl Start Start)))))
+
+(declare-var s (BitVec 4))
+(declare-var t (BitVec 4))
+(define-fun udivtotal ((a (BitVec 4)) (b (BitVec 4))) (BitVec 4)
+    (ite (= b #x0) #xF (bvudiv a b)))
+(define-fun uremtotal ((a (BitVec 4)) (b (BitVec 4))) (BitVec 4)
+    (ite (= b #x0) a (bvurem a b)))
+(define-fun min () (BitVec 4)
+    (bvnot (bvlshr (bvnot #x0) #x1)))
+(define-fun max () (BitVec 4)
+    (bvnot min))
+(define-fun l ((s (BitVec 4)) (t (BitVec 4))) Bool
+    (bvsle (bvnot (inv s t)) t))
+(define-fun SC ((s (BitVec 4)) (t (BitVec 4))) Bool
+    true)
+(constraint (=> (SC s t) (l s t)))
+
+(check-synth)
+Solution:
+(define-fun inv ((s (BitVec 4)) (t (BitVec 4))) (BitVec 4) #b0111)
+
+Question:
+(set-logic BV)
+
+(synth-fun inv ((s (BitVec 4)) (t (BitVec 4))) (BitVec 4)
+    ((Start (BitVec 4)))
+    ((Start (BitVec 4) (s t #x0 #x8 #x7 (bvneg Start) (bvnot Start) (bvadd Start Start) (bvsub Start Start) (bvand Start Start) (bvlshr Start Start) (bvor Start Start) (bvshl Start Start)))))
+
+(declare-var s (BitVec 4))
+(declare-var t (BitVec 4))
+(define-fun udivtotal ((a (BitVec 4)) (b (BitVec 4))) (BitVec 4)
+    (ite (= b #x0) #xF (bvudiv a b)))
+(define-fun uremtotal ((a (BitVec 4)) (b (BitVec 4))) (BitVec 4)
+    (ite (= b #x0) a (bvurem a b)))
+(define-fun min () (BitVec 4)
+    (bvnot (bvlshr (bvnot #x0) #x1)))
+(define-fun max () (BitVec 4)
+    (bvnot min))
+(define-fun l ((s (BitVec 4)) (t (BitVec 4))) Bool
+    (bvuge (bvneg (inv s t)) t))
+(define-fun SC ((s (BitVec 4)) (t (BitVec 4))) Bool
+    true)
+(constraint (=> (SC s t) (l s t)))
+
+(check-synth)
+Solution:
+(define-fun inv ((s (BitVec 4)) (t (BitVec 4))) (BitVec 4) (bvneg t))
+
+Question:
+(set-logic BV)
+
+(synth-fun inv ((s (BitVec 4)) (t (BitVec 4))) (BitVec 4)
+    ((Start (BitVec 4)))
+    ((Start (BitVec 4) (s t #x0 #x8 #x7 (bvneg Start) (bvnot Start) (bvadd Start Start) (bvsub Start Start) (bvand Start Start) (bvlshr Start Start) (bvor Start Start) (bvshl Start Start)))))
+
+(declare-var s (BitVec 4))
+(declare-var t (BitVec 4))
+(define-fun udivtotal ((a (BitVec 4)) (b (BitVec 4))) (BitVec 4)
+    (ite (= b #x0) #xF (bvudiv a b)))
+(define-fun uremtotal ((a (BitVec 4)) (b (BitVec 4))) (BitVec 4)
+    (ite (= b #x0) a (bvurem a b)))
+(define-fun min () (BitVec 4)
+    (bvnot (bvlshr (bvnot #x0) #x1)))
+(define-fun max () (BitVec 4)
+    (bvnot min))
+(define-fun l ((s (BitVec 4)) (t (BitVec 4))) Bool
+    (bvule (bvmul (inv s t) s) t))
+(define-fun SC ((s (BitVec 4)) (t (BitVec 4))) Bool
+    true)
+(constraint (=> (SC s t) (l s t)))
+
+(check-synth)
+Solution:
+(define-fun inv ((s (BitVec 4)) (t (BitVec 4))) (BitVec 4) #b0000)
+
+Question:
+(set-logic BV)
+
+(synth-fun inv ((s (BitVec 4)) (t (BitVec 4))) (BitVec 4)
+    ((Start (BitVec 4)))
+    ((Start (BitVec 4) (s t #x0 #x8 #x7 (bvneg Start) (bvnot Start) (bvadd Start Start) (bvsub Start Start) (bvand Start Start) (bvlshr Start Start) (bvor Start Start) (bvshl Start Start)))))
+
+(declare-var s (BitVec 4))
+(declare-var t (BitVec 4))
+(define-fun udivtotal ((a (BitVec 4)) (b (BitVec 4))) (BitVec 4)
+    (ite (= b #x0) #xF (bvudiv a b)))
+(define-fun uremtotal ((a (BitVec 4)) (b (BitVec 4))) (BitVec 4)
+    (ite (= b #x0) a (bvurem a b)))
+(define-fun min () (BitVec 4)
+    (bvnot (bvlshr (bvnot #x0) #x1)))
+(define-fun max () (BitVec 4)
+    (bvnot min))
+(define-fun l ((s (BitVec 4)) (t (BitVec 4))) Bool
+    (= (bvlshr (inv s t) s) t))
+(define-fun SC ((s (BitVec 4)) (t (BitVec 4))) Bool
+    (= (bvlshr (bvshl t s) s) t))
+(constraint (=> (SC s t) (l s t)))
+
+(check-synth)
+Solution:"""
+
+end_mask = df["next_token"].isna()
+df["sequence_id"] = end_mask.shift(fill_value=False).cumsum()
 
 # parser-state dimension
 P_state = len(df["parser_state_onehot"].iloc[0])
@@ -109,8 +245,18 @@ def f(s_onehot, stack_idxs, rem):
     return float(v_state + v_stack + v_rem + w_K)
 
 
-with open("gadprompts.txt", 'r') as file:
-    valid_sequences = [line.strip() for line in file if line.strip()]
+
+processor = SyncodeWithFProcessor(
+    grammar_text=grammar_text,
+    tokenizer=tokenizer,
+    parser_state_extractor_cls=ParserStateExtractor,
+    f_shift_fn=f,
+    syncode_proc=syncode_proc,
+    stack_context_length=3
+)
+
+# with open("gadprompts.txt", 'r') as file:
+# valid_sequences = [line.strip() for line in file if line.strip()]
 
 # the below approached failed due to OOM when loading the model
 model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-4B", device_map="auto",
@@ -119,7 +265,7 @@ model.eval()
 
 input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
 
-batch_size = 100
+batch_size = 10
 num_batches = (number_of_samples + batch_size - 1) // batch_size
 llm_counts = {}
 
@@ -146,7 +292,8 @@ for batch_idx in range(num_batches):
         match = re.search(r"\b[01]{5}\b", raw_response)
         if match:
             candidate = match.group(0)
-            key = candidate if candidate in valid_sequences else f"[INVALID] {raw_response}"
+            is_valid = check_validity_of_output(parser, candidate)
+            key = candidate if is_valid else f"[INVALID] {raw_response}"
         else:
             key = f"[INVALID] {raw_response}"
 
@@ -167,21 +314,19 @@ Z_valid = sum(p_llm_valid.values())
 px_given_alpha = {seq: prob / Z_valid for seq, prob in p_llm_valid.items()}
 
 print("\n[Sampled] px_given_alpha from LLM generations:")
-for seq in sorted(valid_sequences):
-    print(f"{seq}: {px_given_alpha.get(seq, 0.0):.6f}")
+for seq, prob in px_given_alpha.items():
+    print(f"{seq}: {prob:.6f}")
 
 # generate samples using Syncode
-with open("grammars/gad.lark", 'r') as file:
-    grammar_text = file.read()
-
 syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True)
-syncode_counts = {seq: 0 for seq in valid_sequences}
+syncode_counts = {}
 syncode_invalid_counts = {}
 
 for _ in range(number_of_samples):
     out = syncode.infer(prompt=prompt)
     output = out[0].strip()
-    key = output if output in valid_sequences else f"[INVALID] {output}"
+    is_valid = check_validity_of_output(parser, output)
+    key = output if is_valid else f"[INVALID] {output}"
     syncode_counts[key] = syncode_counts.get(key, 0) + 1
 
 total_syncode = sum(syncode_counts.values())
@@ -192,8 +337,8 @@ p_syncode = {seq: prob for seq, prob in p_syncode_all.items() if not seq.startsw
 p_syncode_invalid = {seq: prob for seq, prob in p_syncode_all.items() if seq.startswith("[INVALID]")}
 
 print("\nSyncode raw counts:")
-for seq in valid_sequences:
-    print(f"{seq}: {syncode_counts[seq]}")
+for seq, count in syncode_counts.items():
+    print(f"{seq}: {count}")
 
 print("p_syncode:")
 for seq, prob in sorted(p_syncode.items()):
@@ -201,57 +346,51 @@ for seq, prob in sorted(p_syncode.items()):
 
 
 # generate samples from our model?
-def sample_from_ours(df, f, tokenizer, num_samples=1000):
-    counts = {}
+tokenizer.pad_token = tokenizer.eos_token
+model.generation_config.pad_token_id = tokenizer.pad_token_id
 
-    for _ in range(num_samples):
-        row0 = df[df["prefix_text"] == "0"].iloc[0]
-        row1 = df[df["prefix_text"] == "1"].iloc[0]
+inputs = tokenizer(
+    prompt,
+    return_tensors="pt",
+    padding=True,  # makes attention_mask
+    truncation=False,
+).to(model.device)
 
-        probs = []
-        for row in [row0, row1]:
-            shift = f(row["parser_state_onehot"], row["stack"], row["remainder"])
-            logits = np.array(row["syncode_logprobs"])
-            adjusted = logits + shift
-            probs.append(adjusted)
+# if for some reason attention_mask is missing (older tokenizers), create it:
+if "attention_mask" not in inputs:
+    inputs["attention_mask"] = torch.ones_like(inputs["input_ids"])
+processors = LogitsProcessorList([processor])
 
-        probs = np.vstack(probs)  # shape (2, V)
-        probs = np.exp(probs - np.max(probs, axis=1, keepdims=True))
-        probs = probs / probs.sum(axis=1, keepdims=True)
+our_counts = {}
+num_batches = (number_of_samples + batch_size - 1) // batch_size
 
-        p0 = probs[0][tokenizer.encode("0", add_special_tokens=False)[0]]
-        p1 = probs[1][tokenizer.encode("1", add_special_tokens=False)[0]]
-        p = np.array([p0, p1])
-        p = p / p.sum()
+for batch_idx in range(num_batches):
+    curr_batch_size = min(batch_size, number_of_samples - batch_idx * batch_size)
+    try:
+        outputs = model.generate(
+            input_ids=inputs["input_ids"].repeat(curr_batch_size, 1),
+            attention_mask=inputs["attention_mask"].repeat(curr_batch_size, 1),
+            max_new_tokens=20,  # generous, we'll parse out the 5 bits
+            do_sample=True,
+            top_p=0.95,
+            temperature=1.0,
+            pad_token_id=tokenizer.eos_token_id,
+            logits_processor=processors
+        )
+    except Exception as e:
+        print("Generation error:", e)
+        outputs = []
 
-        generated = np.random.choice(["0", "1"], p=p)
+    for seq_tensor in outputs:
+        text = tokenizer.decode(seq_tensor, skip_special_tokens=True)
+        raw_response = text.replace(prompt, "").strip()
+        raw_response = re.sub(r"\s+", " ", raw_response)
+        is_valid = check_validity_of_output(parser, raw_response)
 
-        for step in range(4):
-            matching_rows = df[df["prefix_text"] == generated]
-            if matching_rows.empty:
-                break
+        key = candidate if is_valid else f"[INVALID] {raw_response}"
 
-            row = matching_rows.iloc[0]
-            logits = np.array(row["syncode_logprobs"])
-            shift = f(row["parser_state_onehot"], row["stack"], row["remainder"])
-            adjusted_logits = logits + shift
-            probs = np.exp(adjusted_logits - np.max(adjusted_logits))
-            probs = probs / probs.sum()
+        our_counts[key] = our_counts.get(key, 0) + 1
 
-            next_token_id = np.random.choice(len(probs), p=probs)
-            next_token = tokenizer.decode([next_token_id]).strip()
-            if next_token not in ["0", "1"]:
-                break
-
-            generated += next_token
-
-        key = generated if generated in valid_sequences else f"[INVALID] {generated}"
-        counts[key] = counts.get(key, 0) + 1
-
-    return counts
-
-
-our_counts = sample_from_ours(df, f, tokenizer, num_samples=number_of_samples)
 total = sum(our_counts.values())
 p_ours_all = {seq: count / total for seq, count in our_counts.items()}
 
@@ -260,8 +399,8 @@ p_ours = {seq: prob for seq, prob in p_ours_all.items() if not seq.startswith("[
 p_ours_invalid = {seq: prob for seq, prob in p_ours_all.items() if seq.startswith("[INVALID]")}
 
 print("\nOurs raw counts:")
-for seq in valid_sequences:
-    print(f"{seq}: {our_counts.get(seq, 0)}")
+for seq, count in our_counts.items():
+    print(f"{seq}: {count}")
 
 print("\nNormalized Our distribution):")
 for seq, prob in sorted(p_ours.items()):
@@ -307,6 +446,8 @@ print(f"KL(GT||Syncode): {kl_syncode:.4f}")
 print(f"KL(GT||Ours): {kl_ours:.4f}")
 print(f"KL(Syncode||Ours): {kl_syncode_ours:.4f}")
 
+all_sequences = set(llm_counts.keys()) | set(syncode_counts.keys()) | set(our_counts.keys())
+valid_sequences = {seq for seq in all_sequences if not seq.startswith("[INVALID]")}
 sorted_seqs = sorted(valid_sequences)
 x = np.arange(len(sorted_seqs))
 
