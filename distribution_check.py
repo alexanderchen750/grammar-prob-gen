@@ -213,7 +213,7 @@ for seq_id, group in df.groupby("sequence_id"):
     sequence_diff = np.stack(sequence_diffs).sum(axis=0)
 
     # 2. For each row, make a training example
-    for _, row in group.iterrows():
+    for row_idx, row in group.iterrows():
         # Construct features for the current row
         state_vec = np.asarray(row["parser_state_onehot"], dtype=float)
         stack_vec = stack_onehot(row["stack"])
@@ -223,7 +223,16 @@ for seq_id, group in df.groupby("sequence_id"):
 
         # Get next_token_id and use it to pick value from sequence_diff
         next_id = row["next_token_id"]
-        y_rows.append(sequence_diff[next_id])
+
+        val = sequence_diff[next_id]
+
+        if np.isinf(val):
+            print(f"[WARNING] seq_id={seq_id}, row_index={row_idx}, next_id={next_id}, value is inf")
+        if np.isposinf(val):
+            val = 1e6
+        elif np.isneginf(val):
+            val = -1e6
+        y_rows.append(val)
 
 # Final arrays
 X = np.vstack(X_rows)
