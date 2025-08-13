@@ -1,18 +1,40 @@
 start: root
 
-root: "(define-fun" "inv" "((" "s" "(BitVec" "4))" "(" "t" "(BitVec" "4))" "))" "(BitVec" "4)" expr ")"
+root: LP DEFINE_FUN INV LP LP S LP BITVEC FOUR RP RP LP T LP BITVEC FOUR RP RP RP LP BITVEC FOUR RP expr RP
 
-?expr: "s"
-     | "t"
-     | "#x0" | "#x8" | "#x7"
-     | "(" "bvneg"  expr ")"
-     | "(" "bvnot"  expr ")"
-     | "(" "bvadd"  expr expr ")"
-     | "(" "bvsub"  expr expr ")"
-     | "(" "bvand"  expr expr ")"
-     | "(" "bvlshr" expr expr ")"
-     | "(" "bvor"   expr expr ")"
-     | "(" "bvshl"  expr expr ")"
+?expr: S
+     | T
+     | HEX3
+     | LP BVNEG  expr RP
+     | LP BVNOT  expr RP
+     | LP BVADD  expr expr RP
+     | LP BVSUB  expr expr RP
+     | LP BVAND  expr expr RP
+     | LP BVLSHR expr expr RP
+     | LP BVOR   expr expr RP
+     | LP BVSHL  expr expr RP
+
+
+LP: "("
+RP: ")"
+DEFINE_FUN: "define-fun"
+INV: "inv"
+S: "s"
+T: "t"
+BITVEC: "BitVec"
+FOUR: "4"
+
+BVNEG: "bvneg"
+BVNOT: "bvnot"
+BVADD: "bvadd"
+BVSUB: "bvsub"
+BVAND: "bvand"
+BVLSHR: "bvlshr"
+BVOR: "bvor"
+BVSHL: "bvshl"
+
+
+HEX3: "#x0" | "#x7" | "#x8"
 
 %import common.WS
 %ignore WS
