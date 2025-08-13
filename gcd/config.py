@@ -5,7 +5,7 @@ from typing import Optional, List
 @dataclass
 class Config:
     model_name: str = "Qwen/Qwen3-4B"
-    grammar_path: Optional[Path] = Path("./grammars/gad.lark")
+    grammar_path: Optional[Path] = Path("./grammars/bv4.lark")
     device_map: str = "auto"
     dtype: str = "float16"
     top_k: int = 30

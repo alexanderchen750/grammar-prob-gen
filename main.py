@@ -18,11 +18,11 @@ def main():
     print("Starting training data collection...")
 
     # Load grammar
-    with open("grammars/gad.lark", 'r') as f:
+    with open("grammars/bv4.lark", 'r') as f:
         grammar_text = f.read()
 
     # Load dataset
-    with open("gadprompts.txt", 'r') as f:
+    with open("bv4prompts.txt", 'r') as f:
         texts = [line.strip() for line in f if line.strip()]
 
     # Initialize model and processors
