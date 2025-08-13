@@ -1,17 +1,18 @@
 start: root
 
-root: "(define-fun" SPACE "inv" SPACE "((" "s" SPACE "(BitVec" SPACE "4))" SPACE "(" "t" SPACE "(BitVec" SPACE "4))" "))" SPACE "(BitVec" SPACE "4)" SPACE expr ")"
+root: "(define-fun" "inv" "((" "s" "(BitVec" "4))" "(" "t" "(BitVec" "4))" "))" "(BitVec" "4)" expr ")"
 
 ?expr: "s"
      | "t"
      | "#x0" | "#x8" | "#x7"
-     | "(" "bvneg"  SPACE expr ")"
-     | "(" "bvnot"  SPACE expr ")"
-     | "(" "bvadd"  SPACE expr SPACE expr ")"
-     | "(" "bvsub"  SPACE expr SPACE expr ")"
-     | "(" "bvand"  SPACE expr SPACE expr ")"
-     | "(" "bvlshr" SPACE expr SPACE expr ")"
-     | "(" "bvor"   SPACE expr SPACE expr ")"
-     | "(" "bvshl"  SPACE expr SPACE expr ")"
+     | "(" "bvneg"  expr ")"
+     | "(" "bvnot"  expr ")"
+     | "(" "bvadd"  expr expr ")"
+     | "(" "bvsub"  expr expr ")"
+     | "(" "bvand"  expr expr ")"
+     | "(" "bvlshr" expr expr ")"
+     | "(" "bvor"   expr expr ")"
+     | "(" "bvshl"  expr expr ")"
 
-SPACE: " "
+%import common.WS
+%ignore WS
