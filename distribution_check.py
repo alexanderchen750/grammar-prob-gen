@@ -14,6 +14,12 @@ from gcd.processors import SyncodeProcessor, BatchSyncodeCallable, SyncodeWithFP
 from pathlib import Path
 from parserState.ParserStateExtractor import ParserStateExtractor
 
+MAX_NEW_TOKENS = 512
+TEMPERATURE = 1.0
+REPETITION_PENALTY = 1.0
+TOP_P = 1.0
+TOP_K = 0
+
 
 def check_validity_of_output(parser, output):
     try:
@@ -41,7 +47,6 @@ syncode_processor = SyncodeProcessor(
 )
 
 syncode_proc = BatchSyncodeCallable(syncode_processor)
-
 
 prompt = """You are an expert in program synthesis. You are tasked with solving a Syntax-Guided Synthesis (SyGuS) problem. Your goal is to output a function that should produce outputs that satisfy a series of constraints when given specific inputs.
 
@@ -254,7 +259,6 @@ def f(s_onehot, stack_idxs, rem):
     return float(v_state + v_stack + v_rem + w_K)
 
 
-
 processor = SyncodeWithFProcessor(
     grammar_text=grammar_text,
     tokenizer=tokenizer,
@@ -283,11 +287,14 @@ for batch_idx in range(num_batches):
     try:
         outputs = model.generate(
             input_ids=input_ids.repeat(curr_batch_size, 1),
-            max_new_tokens=20,
+            max_new_tokens=MAX_NEW_TOKENS,
             do_sample=True,
-            top_p=0.95,
-            temperature=1.0,
-            pad_token_id=tokenizer.eos_token_id
+            temperature=TEMPERATURE,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            top_p=TOP_P,
+            top_k=TOP_K,
+            repetition_penalty=REPETITION_PENALTY,
         )
     except Exception as e:
         print(e)
@@ -298,13 +305,8 @@ for batch_idx in range(num_batches):
         raw_response = text.replace(prompt, "").strip()
         raw_response = re.sub(r"\s+", " ", raw_response)
 
-        match = re.search(r"\b[01]{5}\b", raw_response)
-        if match:
-            candidate = match.group(0)
-            is_valid = check_validity_of_output(parser, candidate)
-            key = candidate if is_valid else f"[INVALID] {raw_response}"
-        else:
-            key = f"[INVALID] {raw_response}"
+        is_valid = check_validity_of_output(parser, raw_response)
+        key = raw_response if is_valid else f"[INVALID] {raw_response}"
 
         llm_counts[key] = llm_counts.get(key, 0) + 1
 
@@ -327,7 +329,15 @@ for seq, prob in px_given_alpha.items():
     print(f"{seq}: {prob:.6f}")
 
 # generate samples using Syncode
-syncode = Syncode(model="Qwen/Qwen3-4B", grammar=grammar_text, parse_output_only=True)
+syncode = Syncode(model="Qwen/Qwen3-4B",
+                  grammar=grammar_text,
+                  parse_output_only=True, do_sample=True,
+                  pad_token_id=tokenizer.eos_token_id,
+                  eos_token_id=tokenizer.eos_token_id,
+                  max_new_tokens=MAX_NEW_TOKENS,
+                  top_p=TOP_P,
+                  top_k=TOP_K,
+                  temperature=TEMPERATURE, )
 syncode_counts = {}
 syncode_invalid_counts = {}
 
@@ -352,7 +362,6 @@ for seq, count in syncode_counts.items():
 print("p_syncode:")
 for seq, prob in sorted(p_syncode.items()):
     print(f"{seq}: {prob:.6f}")
-
 
 # generate samples from our model?
 tokenizer.pad_token = tokenizer.eos_token
@@ -379,12 +388,15 @@ for batch_idx in range(num_batches):
         outputs = model.generate(
             input_ids=inputs["input_ids"].repeat(curr_batch_size, 1),
             attention_mask=inputs["attention_mask"].repeat(curr_batch_size, 1),
-            max_new_tokens=20,  # generous, we'll parse out the 5 bits
             do_sample=True,
-            top_p=0.95,
-            temperature=1.0,
+            top_p=TOP_P,
+            top_k=TOP_K,
+            temperature=TEMPERATURE,
             pad_token_id=tokenizer.eos_token_id,
-            logits_processor=processors
+            eos_token_id=tokenizer.eos_token_id,
+            max_new_tokens=MAX_NEW_TOKENS,
+            logits_processor=processors,
+            repetition_penalty=REPETITION_PENALTY,
         )
     except Exception as e:
         print("Generation error:", e)
@@ -396,7 +408,7 @@ for batch_idx in range(num_batches):
         raw_response = re.sub(r"\s+", " ", raw_response)
         is_valid = check_validity_of_output(parser, raw_response)
 
-        key = candidate if is_valid else f"[INVALID] {raw_response}"
+        key = raw_response if is_valid else f"[INVALID] {raw_response}"
 
         our_counts[key] = our_counts.get(key, 0) + 1
 
